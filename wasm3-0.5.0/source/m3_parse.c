@@ -240,6 +240,11 @@ _       (ReadLEB_u32 (& index, & i_bytes, i_end));                              
         {
             _throwif(m3Err_wasmMalformed, index >= io_module->numFunctions);
             IM3Function func = &(io_module->functions [index]);
+            if (strcmp("_start", utf8) == 0)
+            {
+                io_module->mainFunction = index;
+                // fprintf(stderr, "mainFunction 0x%03x 0x%08p\n", index, io_module);
+            }
             if (func->numNames < d_m3MaxDuplicateFunctionImpl)
             {
                 func->names[func->numNames++] = utf8;
@@ -585,6 +590,7 @@ _try {
     _throwifnull (module);
     module->name = ".unnamed";                                                      m3log (parse, "load module: %d bytes", i_numBytes);
     module->startFunction = -1;
+    module->mainFunction = -1;
     //module->hasWasmCodeCopy = false;
     module->environment = i_environment;
 

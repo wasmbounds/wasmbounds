@@ -11,10 +11,16 @@
 
 void Module_FreeFunctions (IM3Module i_module)
 {
+    if (i_module->functions == NULL)
+    {
+        return;
+    }
     for (u32 i = 0; i < i_module->numFunctions; ++i)
     {
         IM3Function func = & i_module->functions [i];
-        Function_Release (func);
+        if (func != NULL) {
+            Function_Release (func);
+        }
     }
 }
 

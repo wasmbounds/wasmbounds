@@ -14,6 +14,7 @@
 
 d_m3BeginExternC
 
+#include <wasmbounds_rr.h>
 
 //---------------------------------------------------------------------------------------------------------------------------------
 
@@ -27,6 +28,7 @@ M3MemoryInfo;
 
 typedef struct M3Memory
 {
+    uint8_t* region;
     M3MemoryHeader *        mallocated;
 
     u32                     numPages;
@@ -115,6 +117,7 @@ typedef struct M3Module
     //bool                    hasWasmCodeCopy;
 
     struct M3Module *       next;
+    i32                     mainFunction;
 }
 M3Module;
 

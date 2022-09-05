@@ -647,7 +647,8 @@ _           (PushAllocatedSlotAndEmit (o, i_type));
             if (is64BitType)
             {
                 u64 * constant = (u64 *) & o->constants [constTableIndex];
-                * constant = i_word;
+                // * constant = i_word;
+                memcpy(constant, &i_word, 8);
             }
             else
             {

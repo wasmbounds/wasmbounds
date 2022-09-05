@@ -18,6 +18,10 @@ set(sources
 )
 
 add_library(m3 STATIC ${sources})
+target_link_libraries(m3 PUBLIC m3_cmake_config)
+if(BUILD_WASI MATCHES "uvwasi")
+    target_link_libraries(m3 PUBLIC uvwasi_a uv_a)
+endif()
 
 target_include_directories(m3 PUBLIC .)
 

@@ -100,7 +100,8 @@ add_executable(${OUT_FILE} ${app_srcs})
 
 #-fno-optimize-sibling-calls
 
-set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -DDEBUG=1")
+add_library(m3_cmake_config INTERFACE)
+target_compile_definitions(m3_cmake_config INTERFACE $<$<CONFIG:Debug>:DEBUG>)
 
 if(EMSCRIPTEN OR EMSCRIPTEN_LIB)
 
@@ -155,7 +156,8 @@ elseif(WIN32 AND NOT MINGW)
 
 else()
 
-  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Dd_m3HasTracer") #-Dd_m3FixedHeap=1048576
+  target_compile_definitions(m3_cmake_config INTERFACE d_m3HasTracer)
+  #set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Dd_m3HasTracer") #-Dd_m3FixedHeap=1048576
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -Wparentheses -Wundef -Wpointer-arith -Wstrict-aliasing=2")
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Werror=implicit-function-declaration") # -Werror=cast-align
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-unused-function -Wno-unused-variable -Wno-unused-parameter -Wno-missing-field-initializers")
@@ -171,6 +173,8 @@ else()
   if(BUILD_NATIVE)
     if(APPLE AND CMAKE_C_COMPILER_ID MATCHES "Clang" AND CMAKE_HOST_SYSTEM_PROCESSOR MATCHES "arm64")
       set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -mcpu=native")
+    elseif(CMAKE_HOST_SYSTEM_PROCESSOR MATCHES "riscv64")
+    set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -march=rv64gcv")
     else()
       set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -march=native")
     endif()
@@ -184,15 +188,17 @@ else()
 endif()
 
 if(BUILD_WASI MATCHES "simple")
-  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Dd_m3HasWASI")
+  #set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Dd_m3HasWASI")
+  target_compile_definitions(m3_cmake_config INTERFACE d_m3HasWASI)
 elseif(BUILD_WASI MATCHES "metawasi")
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Dd_m3HasMetaWASI")
+  target_compile_definitions(m3_cmake_config INTERFACE d_m3HasMetaWASI)
 elseif(BUILD_WASI MATCHES "uvwasi")
   include(FetchContent)
   FetchContent_Declare(
     uvwasi
-    GIT_REPOSITORY https://github.com/vshymanskyy/uvwasi.git
-    GIT_TAG b063d686848c32a26119513056874f051c74258a
+    GIT_REPOSITORY https://github.com/nodejs/uvwasi.git
+    GIT_TAG b599542f7ce001e04cdff9db82b05fee96bb3332
   )
 
   FetchContent_GetProperties(uvwasi)
@@ -201,7 +207,8 @@ elseif(BUILD_WASI MATCHES "uvwasi")
     include_directories("${uvwasi_SOURCE_DIR}/include")
     add_subdirectory(${uvwasi_SOURCE_DIR} ${uvwasi_BINARY_DIR} EXCLUDE_FROM_ALL)
   endif()
-  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Dd_m3HasUVWASI")
+  #set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Dd_m3HasUVWASI")
+  target_compile_definitions(m3_cmake_config INTERFACE d_m3HasUVWASI)
   target_link_libraries(${OUT_FILE} uvwasi_a uv_a)
 endif()
 
@@ -214,7 +221,7 @@ else()
 endif()
 
 add_subdirectory(source)
-target_link_libraries(${OUT_FILE} m3)
+target_link_libraries(${OUT_FILE} m3 m3_cmake_config)
 
 message("Flags:         ${CMAKE_C_FLAGS}")
 message("Debug flags:   ${CMAKE_C_FLAGS_DEBUG}")

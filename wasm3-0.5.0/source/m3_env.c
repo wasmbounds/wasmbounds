@@ -231,7 +231,11 @@ void  Runtime_Release  (IM3Runtime i_runtime)
     Environment_ReleaseCodePages (i_runtime->environment, i_runtime->pagesFull);
 
     m3_Free (i_runtime->stack);
-    m3_Free (i_runtime->memory.mallocated);
+    if (i_runtime->memory.mallocated) {
+      wasmboundsFreeRegion(i_runtime->memory.region, i_runtime->memory.mallocated->length + 4096);
+      i_runtime->memory.mallocated = NULL;
+      i_runtime->memory.region = NULL;
+    }
 }
 
 
@@ -371,16 +375,21 @@ M3Result  ResizeMemory  (IM3Runtime io_runtime, u32 i_numPages)
             numPageBytes = M3_MIN (numPageBytes, io_runtime->memoryLimit);
         }
 
-        size_t numBytes = numPageBytes + sizeof (M3MemoryHeader);
+        size_t numBytes = numPageBytes + 4096;
 
         size_t numPreviousBytes = memory->numPages * d_m3MemPageSize;
         if (numPreviousBytes)
-            numPreviousBytes += sizeof (M3MemoryHeader);
+            numPreviousBytes += 4096;
 
-        void* newMem = m3_Realloc (memory->mallocated, numBytes, numPreviousBytes);
-        _throwifnull(newMem);
+        //void* newMem = m3_Realloc (memory->mallocated, numBytes, numPreviousBytes);
+        if (numPreviousBytes == 0) {
+          memory->region = wasmboundsAllocateRegion(numBytes, (size_t)(d_m3MaxLinearMemoryPages) * (size_t)(d_m3MemPageSize) + 4096, 12);
+          memory->mallocated = (M3MemoryHeader *)(memory->region + 4096 - sizeof(M3MemoryHeader));
+        } else {
+          wasmboundsResizeRegion(memory->region, numPreviousBytes, numBytes);
+        }
 
-        memory->mallocated = (M3MemoryHeader*)newMem;
+        _throwifnull(memory->region);
 
 # if d_m3LogRuntime
         M3MemoryHeader * oldMallocated = memory->mallocated;
