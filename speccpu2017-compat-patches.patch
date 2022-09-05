@@ -1,0 +1,2085 @@
+--- benchspec/CPU/502.gcc_r/src/auto-host.h	2015-12-09 23:55:23.000000000 
++++ benchspec/CPU/502.gcc_r/src/auto-host.h	2022-09-05 14:50:18.000000000 
+@@ -680,17 +680,17 @@
+ #ifndef USED_FOR_TARGET
+ #define HAVE_DECL_GETPAGESIZE 0
+ #endif
+ 
+ 
+ /* Define to 1 if we found a declaration for 'getrlimit', otherwise define to
+    0. */
+ #ifndef USED_FOR_TARGET
+-#define HAVE_DECL_GETRLIMIT 1
++// #define HAVE_DECL_GETRLIMIT 1
+ #endif
+ 
+ 
+ /* Define to 1 if we found a declaration for 'getrusage', otherwise define to
+    0. */
+ #ifndef USED_FOR_TARGET
+ #define HAVE_DECL_GETRUSAGE 1
+ #endif
+@@ -742,17 +742,17 @@
+ #ifndef USED_FOR_TARGET
+ #define HAVE_DECL_SBRK 1
+ #endif
+ 
+ 
+ /* Define to 1 if we found a declaration for 'setrlimit', otherwise define to
+    0. */
+ #ifndef USED_FOR_TARGET
+-#define HAVE_DECL_SETRLIMIT 1
++// #define HAVE_DECL_SETRLIMIT 1
+ #endif
+ 
+ 
+ /* Define to 1 if we found a declaration for 'sigaltstack', otherwise define
+    to 0. */
+ #ifndef USED_FOR_TARGET
+ #define HAVE_DECL_SIGALTSTACK 1
+ #endif
+@@ -1023,17 +1023,17 @@
+ #ifndef USED_FOR_TARGET
+ #define HAVE_GETIPINFO 1
+ #endif
+ 
+ 
+ /* Define to 1 if you have the `getrlimit' function. */
+ #ifndef USED_FOR_TARGET
+ #ifndef SPEC_WINDOWS
+-#define HAVE_GETRLIMIT 1
++// #define HAVE_GETRLIMIT 1
+ #endif
+ #endif
+ 
+ 
+ /* Define to 1 if you have the `getrusage' function. */
+ #ifndef USED_FOR_TARGET
+ #ifndef SPEC_WINDOWS
+ #define HAVE_GETRUSAGE 1
+@@ -1309,17 +1309,17 @@
+ #ifndef USED_FOR_TARGET
+ #define HAVE_SETLOCALE 1
+ #endif
+ 
+ 
+ /* Define to 1 if you have the `setrlimit' function. */
+ #ifndef USED_FOR_TARGET
+ #ifndef SPEC_WINDOWS
+-#define HAVE_SETRLIMIT 1
++// #define HAVE_SETRLIMIT 1
+ #endif
+ #endif
+ 
+ 
+ /* Define to 1 if you have the <stddef.h> header file. */
+ #ifndef USED_FOR_TARGET
+ #define HAVE_STDDEF_H 1
+ #endif
+@@ -1427,17 +1427,17 @@
+ #ifndef USED_FOR_TARGET
+ #define HAVE_SYS_TYPES_H 1
+ #endif
+ 
+ 
+ /* Define to 1 if you have <sys/wait.h> that is POSIX.1 compatible. */
+ #ifndef USED_FOR_TARGET
+ #ifndef SPEC_WINDOWS
+-#define HAVE_SYS_WAIT_H 1
++// #define HAVE_SYS_WAIT_H 1
+ #endif
+ #endif
+ 
+ 
+ /* Define to 1 if you have the `times' function. */
+ #ifndef USED_FOR_TARGET
+ #ifndef SPEC_WINDOWS
+ #define HAVE_TIMES 1
+--- benchspec/CPU/502.gcc_r/src/libib_config.h	2013-06-25 17:35:18.000000000 
++++ benchspec/CPU/502.gcc_r/src/libib_config.h	2022-09-05 14:50:18.000000000 
+@@ -333,17 +333,17 @@
+ 
+ /* Define to 1 if you have the <sys/time.h> header file. */
+ #define HAVE_SYS_TIME_H 1
+ 
+ /* Define to 1 if you have the <sys/types.h> header file. */
+ #define HAVE_SYS_TYPES_H 1
+ 
+ /* Define to 1 if you have <sys/wait.h> that is POSIX.1 compatible. */
+-#define HAVE_SYS_WAIT_H 1
++// #define HAVE_SYS_WAIT_H 1
+ 
+ /* Define to 1 if you have the `table' function. */
+ /* #undef HAVE_TABLE */
+ 
+ /* Define to 1 if you have the `times' function. */
+ #define HAVE_TIMES 1
+ 
+ /* Define to 1 if you have the <time.h> header file. */
+--- benchspec/CPU/510.parest_r/src/source/base/log.cc	2012-05-01 22:08:25.000000000 
++++ benchspec/CPU/510.parest_r/src/source/base/log.cc	2022-09-05 14:50:18.000000000 
+@@ -18,17 +18,17 @@
+ #include <base/thread_management.h>
+ 
+ // include sys/resource.h for rusage(). Mac OS X needs sys/time.h then
+ // as well (strange), so include that, too.
+ #if defined(SPEC_WINDOWS)
+ # include <time.h>
+ #else
+ #include <sys/time.h>
+-#include <sys/resource.h>
++// #include <sys/resource.h>
+ #include <sys/types.h>
+ #include <unistd.h>
+ #endif /* !SPEC_WINDOWS */
+ #include <iostream>
+ #include <iomanip>
+ #include <fstream>
+ #include <sstream>
+ 
+--- benchspec/CPU/510.parest_r/src/source/base/parameter_handler.cc	2010-11-23 06:06:35.000000000 
++++ benchspec/CPU/510.parest_r/src/source/base/parameter_handler.cc	2022-09-05 14:50:18.000000000 
+@@ -24,19 +24,31 @@
+ #include <list>
+ #include <sstream>
+ #include <cctype>
+ 
+ #ifdef HAVE_STD_NUMERIC_LIMITS
+ # include <limits>
+ #endif
+ 
++#ifdef __wasi__
++extern "C" {
++  char __cxa_exception_buffer_storage[1024];
++  void* __cxa_allocate_exception(size_t s) {
++    return __cxa_exception_buffer_storage;
++  }
++  void* __cxa_free_exception(void* e) {}
++
++  void __cxa_throw(void* e, void* t, void(*d)(void*)) {
++    exit(1);
++  }
++}
++#endif
++
+ DEAL_II_NAMESPACE_OPEN
+-
+-
+ 
+ //TODO[WB]: various functions here could be simplified by using namespace Utilities
+ 
+ namespace Patterns
+ {
+ 
+   PatternBase::~PatternBase ()
+   {}
+@@ -744,17 +756,17 @@
+ 
+ 
+ double ParameterHandler::get_double (const std::string &entry_string) const
+ {
+   std::string s = get (entry_string);
+   char *endptr;
+   double d = std::strtod (s.c_str(), &endptr);
+ 				   // assert there was no error
+-  AssertThrow ((s.c_str()!='\0') || (*endptr == '\0'),
++  AssertThrow ((s.c_str()[0]!='\0') || (*endptr == '\0'),
+ 	       ExcConversionError(s));
+ 
+   return d;
+ }
+ 
+ 
+ 
+ bool ParameterHandler::get_bool (const std::string &entry_string) const
+--- benchspec/CPU/510.parest_r/src/source/lac/sparse_direct.cc	2016-08-16 21:50:07.000000000 
++++ benchspec/CPU/510.parest_r/src/source/lac/sparse_direct.cc	2022-09-05 14:50:18.000000000 
+@@ -41,17 +41,17 @@
+ #if defined(__INTEL_COMPILER) && !defined(__GNUC__)
+ #  define __GNUC__ 3
+ #endif
+ 
+ #if !defined(SPEC)
+ #include <sys/wait.h>
+ #include <sys/types.h>
+ #endif /* !SPEC */
+-#include <signal.h>
++// #include <signal.h>
+ #if !defined(SPEC)
+ #include <unistd.h>
+ #endif /* !SPEC */
+ 
+ #ifdef SPEC
+ #  include <errno.h>
+ #else 
+ #   ifndef DEAL_II_USE_DIRECT_ERRNO_H
+--- benchspec/CPU/511.povray_r/src/config.h	2016-07-11 22:21:00.000000000 
++++ benchspec/CPU/511.povray_r/src/config.h	2022-09-05 14:50:18.000000000 
+@@ -1,15 +1,15 @@
+ #if !defined(CONFIG_H)
+ #define CONFIG_H
+ 
+ #include <stdio.h>
+ #include <stdarg.h>
+ #include <stdlib.h>
+-#include <setjmp.h>
++// #include <setjmp.h>
+ 
+ #if defined(SPEC_WINDOWS)
+ #include <direct.h>
+ #define getcwd _getcwd
+ #define vsnprintf _vsnprintf
+ #endif /* SPEC_WINDOWS */
+ 
+ #if !defined(SPEC)
+--- benchspec/CPU/511.povray_r/src/povray.cpp	2010-08-31 18:51:26.000000000 
++++ benchspec/CPU/511.povray_r/src/povray.cpp	2022-09-05 14:50:18.000000000 
+@@ -86,16 +86,31 @@
+ #include "renderio.h"
+ #include "statspov.h"
+ #include "pov_err.h"
+ #include "optout.h"
+ #include "povms.h"
+ #include "rendctrl.h"
+ #include "platformbase.h"
+ 
++#ifdef __wasi__
++extern "C" {
++  int __cxa_exception_buffer_storage[256];
++  void* __cxa_allocate_exception(size_t s) {
++    return __cxa_exception_buffer_storage;
++  }
++  void* __cxa_free_exception(void* e) {}
++
++  void __cxa_throw(void* e, void* t, void(*d)(void*)) {
++    fprintf(stderr, "Exception thrown: %p %d %d\n", e, __cxa_exception_buffer_storage[0], __cxa_exception_buffer_storage[1]);
++    exit(1);
++  }
++}
++#endif
++
+ #if(USE_LOCAL_POVMS_OUTPUT == 1)
+ 	#include "defaultrenderfrontend.h"
+ 	#include "defaultplatformbase.h"
+ 	#include "processrenderoptions.h"
+ 
+ 	USING_POV_FRONTEND_NAMESPACE
+ 	USING_POV_BASE_NAMESPACE
+ #endif
+@@ -161,25 +176,25 @@
+ 
+ /*****************************************************************************
+ *
+ * FUNCTION
+ *
+ *   main
+ *
+ * INPUT
+-*   
++*
+ * OUTPUT
+-*   
++*
+ * RETURNS
+ *
+ * AUTHOR
+ *
+ *   POV-Ray Team
+-*   
++*
+ * DESCRIPTION
+ *
+ *   -
+ *
+ * CHANGES
+ *
+ *   -
+ *
+@@ -345,22 +360,22 @@
+ *
+ * AUTHOR -- CEY
+ *
+ * DESCRIPTION
+ *
+ *   This routine does essential initialization that is required before any
+ *   POV_MALLOC-like routines may be called and before any text streams and
+ *   the POVMS may be used.
+-*   
++*
+ *   If you are not using any built-in main and need access to any part of
+ *   the generic code before povray_render is called, you MUST call this routine
+ *   first!  Also note that it is safe to call it twice. If you don't call it,
+ *   povray_render will. It won't hurt if you both do it.
+-*   
++*
+ * CHANGES
+ *   Nov 1995 : Created by CEY
+ *
+ ******************************************************************************/
+ 
+ void povray_init()
+ {
+    Stage = STAGE_PREINIT;
+@@ -396,25 +411,25 @@
+ 
+ /*****************************************************************************
+ *
+ * FUNCTION
+ *
+ *   povray_terminate
+ *
+ * INPUT
+-*   
++*
+ * OUTPUT
+-*   
++*
+ * RETURNS
+ *
+ * AUTHOR
+ *
+ *   POV-Ray Team
+-*   
++*
+ * DESCRIPTION
+ *
+ *   -
+ *
+ * CHANGES
+ *
+ *   -
+ *
+@@ -434,25 +449,25 @@
+ 
+ /*****************************************************************************
+ *
+ * FUNCTION
+ *
+ *   povray_exit
+ *
+ * INPUT
+-*   
++*
+ * OUTPUT
+-*   
++*
+ * RETURNS
+ *
+ * AUTHOR
+ *
+ *   POV-Ray Team
+-*   
++*
+ * DESCRIPTION
+ *
+ *   -
+ *
+ * CHANGES
+ *
+ *   -
+ *
+@@ -465,21 +480,21 @@
+ 		Send_Progress("Aborting render!", PROGRESS_ABORTING_RENDER);
+ 
+ 		if(POV_SHELLOUT(USER_ABORT_SHL) != FATAL_RET)
+ 			Send_Progress("User abort", PROGRESS_USER_ABORT);
+ 		else // Do *not* call "Error" here because it would in turn call povray_exit! [trf]
+ 			PossibleError("Fatal error in User_Abort_Command.");
+ 	}
+ 
+-	if(Stage == STAGE_PARSING) 
++	if(Stage == STAGE_PARSING)
+ 	{
+ 		Terminate_Tokenizer();
+-		Destroy_Textures(Default_Texture); 
+-		Destroy_Camera(Default_Camera); 
++		Destroy_Textures(Default_Texture);
++		Destroy_Camera(Default_Camera);
+ 	}
+ 
+ 	Do_Cooperate(0);
+ 
+ 	pre_init_flag = 1;
+ 
+ 	Cooperate_Render_Flag = 3;
+ 
+@@ -489,25 +504,25 @@
+ 
+ /*****************************************************************************
+ *
+ * FUNCTION
+ *
+ *   povray_cooperate
+ *
+ * INPUT
+-*   
++*
+ * OUTPUT
+-*   
++*
+ * RETURNS
+ *
+ * AUTHOR
+ *
+ *   POV-Ray Team
+-*   
++*
+ * DESCRIPTION
+ *
+ *   -
+ *
+ * CHANGES
+ *
+ *   -
+ *
+@@ -599,25 +614,25 @@
+ 
+ /*****************************************************************************
+ *
+ * FUNCTION
+ *
+ *   povray_getoutputcontext
+ *
+ * INPUT
+-*   
++*
+ * OUTPUT
+-*   
++*
+ * RETURNS
+-*   
++*
+ * AUTHOR
+ *
+ *   POV-Ray Team
+-*   
++*
+ * DESCRIPTION
+ *
+ *   -
+ *
+ * CHANGES
+ *
+ *   -
+ *
+@@ -640,25 +655,25 @@
+ 
+ /*****************************************************************************
+ *
+ * FUNCTION
+ *
+ *   Do_Cooperate
+ *
+ * INPUT
+-*   
++*
+ * OUTPUT
+-*   
++*
+ * RETURNS
+-*   
++*
+ * AUTHOR
+ *
+ *   POV-Ray Team
+-*   
++*
+ * DESCRIPTION
+ *
+ *   -
+ *
+ * CHANGES
+ *
+ *   -
+ *
+--- benchspec/CPU/511.povray_r/src/userio.cpp	2015-09-23 15:11:49.000000000 
++++ benchspec/CPU/511.povray_r/src/userio.cpp	2022-09-05 14:50:18.000000000 
+@@ -417,19 +417,19 @@
+ }
+ 
+ 
+ /*****************************************************************************
+ *
+ * FUNCTION
+ *
+ * INPUT
+-*   
++*
+ * OUTPUT
+-*   
++*
+ * RETURNS
+ *
+ * AUTHOR
+ *
+ * DESCRIPTION
+ *
+ * CHANGES
+ *
+@@ -452,17 +452,17 @@
+ *
+ * FUNCTION
+ *
+ *   pov_shellout
+ *
+ * INPUT
+ *
+ *   template_command - the template command string to execute
+-*   
++*
+ * OUTPUT
+ *
+ * RETURNS
+ *
+ * AUTHOR
+ *
+ *   POV-Ray Team
+ *
+@@ -517,17 +517,17 @@
+   for (i = 0, j = 0; i < length; )
+   {
+     if (template_command[i] == '%')
+     {
+       switch (toupper(template_command[i+1]))
+       {
+          case 'O':
+ 
+-          strncpy(&real_command[j], opts.Output_Numbered_Name, 
++          strncpy(&real_command[j], opts.Output_Numbered_Name,
+                (unsigned)(l=strlen(opts.Output_Numbered_Name)));
+ 
+           break;
+ 
+          case 'P':
+ 
+           strncpy(&real_command[j], opts.Output_Path,(unsigned)(l=strlen(opts.Output_Path)));
+ 
+@@ -583,17 +583,17 @@
+     else
+     {
+       real_command[j++]=template_command[i++];
+     }
+   }
+ 
+   real_command[j]='\0';
+ 
+-  Return_Code=(POV_SHELLOUT_CAST)POV_SYSTEM(real_command);
++  Return_Code=(POV_SHELLOUT_CAST)0;//POV_SYSTEM(real_command);
+ 
+   if (opts.Shellouts[Type].Inverse)
+   {
+     Return_Code=(POV_SHELLOUT_CAST)(!((int)Return_Code));
+   }
+ 
+   if (Return_Code)
+   {
+--- benchspec/CPU/520.omnetpp_r/src/simulator/cexception.cc	2016-04-21 20:56:14.000000000 
++++ benchspec/CPU/520.omnetpp_r/src/simulator/cexception.cc	2022-09-05 14:50:18.000000000 
+@@ -16,17 +16,17 @@
+   This file is distributed WITHOUT ANY WARRANTY. See the file
+   `license' for details on this and other legal matters.
+ *--------------------------------------------------------------*/
+ 
+ #include <stdio.h>
+ #include <string.h>
+ #include <stdlib.h>  // for exit()
+ #include <stdarg.h>  // for va_list
+-#include <signal.h>  // raise()
++// #include <signal.h>  // raise()
+ #include "cexception.h"
+ #include "csimulation.h"
+ #include "ccomponent.h"
+ #include "cmodule.h"
+ #include "cenvir.h"
+ #include "cconfiguration.h"
+ #include "commonutil.h"
+ 
+@@ -34,17 +34,17 @@
+ 
+ #if !defined(SPEC)
+ #if defined _MSC_VER
+ #define DEBUG_TRAP  __asm int 3  // Visual C++: debug interrupt
+ //SPEC correct syntax please #elif defined _WIN32 and defined __GNUC__
+ #elif defined (_WIN32) && defined (__GNUC__)
+ #define DEBUG_TRAP  asm("int $3\n")  // MinGW or Cygwin: debug interrupt with gnu syntax
+ #else
+-#define DEBUG_TRAP  raise(6)  // SIGABRT
++#define DEBUG_TRAP  exit(6)  // SIGABRT
+ #endif
+ #endif
+ 
+ 
+ #define BUFLEN 1024
+ static char buffer[BUFLEN];
+ static char buffer2[BUFLEN];
+ 
+--- benchspec/CPU/520.omnetpp_r/src/simulator/cmdenv.cc	2016-08-18 15:44:12.000000000 
++++ benchspec/CPU/520.omnetpp_r/src/simulator/cmdenv.cc	2022-09-05 14:50:18.000000000 
+@@ -14,17 +14,17 @@
+ 
+   This file is distributed WITHOUT ANY WARRANTY. See the file
+   `license' for details on this and other legal matters.
+ *--------------------------------------------------------------*/
+ 
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <string.h>
+-#include <signal.h>
++// #include <signal.h>
+ 
+ #if defined(SPEC)
+ # include <algorithm>
+ #endif
+ 
+ #include "opp_ctype.h"
+ #include "cmddefs.h"
+ #include "cmdenv.h"
+@@ -529,30 +529,30 @@
+         // against this string for detecting user input
+         sprintf(buf, "  %d%% completed", (int)(100*ratio));
+         return buf;
+     }
+ }
+ 
+ void Cmdenv::signalHandler(int signum)
+ {
+-    if (signum == SIGINT || signum == SIGTERM)
++    //if (signum == SIGINT || signum == SIGTERM)
+         sigint_received = true;
+ }
+ 
+ void Cmdenv::installSignalHandler()
+ {
+-    signal(SIGINT, signalHandler);
+-    signal(SIGTERM, signalHandler);
++    //signal(SIGINT, signalHandler);
++    //signal(SIGTERM, signalHandler);
+ }
+ 
+ void Cmdenv::deinstallSignalHandler()
+ {
+-    signal(SIGINT, SIG_DFL);
+-    signal(SIGTERM, SIG_DFL);
++    //signal(SIGINT, SIG_DFL);
++    //signal(SIGTERM, SIG_DFL);
+ }
+ 
+ //-----------------------------------------------------
+ 
+ void Cmdenv::putsmsg(const char *s)
+ {
+     ::fprintf(fout, "\n<!> %s\n\n", s);
+     ::fflush(fout);
+--- benchspec/CPU/520.omnetpp_r/src/simulator/task.h	2009-09-25 20:10:04.000000000 
++++ benchspec/CPU/520.omnetpp_r/src/simulator/task.h	2022-03-01 18:53:48.000000000 
+--- benchspec/CPU/525.x264_r/src/x264_src/x264.c	2015-09-22 18:33:02.000000000 
++++ benchspec/CPU/525.x264_r/src/x264_src/x264.c	2022-09-05 14:50:18.000000000 
+@@ -21,17 +21,17 @@
+  * You should have received a copy of the GNU General Public License
+  * along with this program; if not, write to the Free Software
+  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02111, USA.
+  *****************************************************************************/
+ 
+ #include <stdlib.h>
+ #include <math.h>
+ 
+-#include <signal.h>
++// #include <signal.h>
+ #define _GNU_SOURCE
+ #include <getopt.h>
+ 
+ #include "common/common.h"
+ #include "common/cpu.h"
+ #include "x264.h"
+ #include "muxers.h"
+ 
+@@ -164,17 +164,17 @@
+     _setmode(_fileno(stdout), _O_BINARY);
+ #endif
+ 
+     /* Parse command line */
+     if( Parse( argc, argv, &param, &opt ) < 0 )
+         return -1;
+ 
+     /* Control-C handler */
+-    signal( SIGINT, SigIntHandler );
++    // signal( SIGINT, SigIntHandler );
+ 
+     ret = Encode( &param, &opt );
+ 
+ #ifdef PTW32_STATIC_LIB
+     pthread_win32_thread_detach_np();
+     pthread_win32_process_detach_np();
+ #endif
+ 
+--- benchspec/CPU/531.deepsjeng_r/src/sjeng.h	2016-03-28 15:08:37.000000000 
++++ benchspec/CPU/531.deepsjeng_r/src/sjeng.h	2022-09-05 14:50:18.000000000 
+@@ -7,17 +7,17 @@
+ */
+ 
+ #ifndef SJENG_H
+ #define SJENG_H
+ 
+ #include "config.h"
+ 
+ #include <assert.h>
+-#include <signal.h>
++// #include <signal.h>
+ #include <stdlib.h>
+ #include <stdio.h>
+ #include <string.h>
+ #include <ctype.h>
+ 
+ #if defined(WIN32) || defined(WIN64) || defined(SPEC_WINDOWS)
+ #define NOMINMAX  /* prevent defines clash */
+ #define WIN32_LEAN_AND_MEAN
+--- benchspec/CPU/538.imagick_r/src/wand/studio.h	2016-11-17 22:57:46.000000000 
++++ benchspec/CPU/538.imagick_r/src/wand/studio.h	2022-09-05 14:50:18.000000000 
+@@ -1,17 +1,17 @@
+ /*
+   Copyright 1999-2014 ImageMagick Studio LLC, a non-profit organization
+   dedicated to making software imaging solutions freely available.
+-  
++
+   You may not use this file except in compliance with the License.
+   obtain a copy of the License at
+-  
++
+     http://www.imagemagick.org/script/license.php
+-  
++
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
+ 
+   MagickWand private application programming interface declarations.
+ */
+@@ -21,17 +21,17 @@
+ #if defined(__cplusplus) || defined(c_plusplus)
+ extern "C" {
+ #endif
+ 
+ #if defined(WIN32) || defined(WIN64) || defined(SPEC_WINDOWS)
+ #  define MAGICKWAND_WINDOWS_SUPPORT
+ #else
+ #  define MAGICKWAND_POSIX_SUPPORT
+-#endif 
++#endif
+ 
+ #define MAGICKWAND_IMPLEMENTATION  1
+ 
+ #if !defined(_MAGICKWAND_CONFIG_H)
+ # define _MAGICKWAND_CONFIG_H
+ # if !defined(vms) && !defined(macintosh)
+ #  include "magick/magick-config.h"
+ # else
+@@ -184,18 +184,18 @@
+ #   endif
+ #   if defined(MAGICKCORE_HAVE_NDIR_H)
+ #    include <ndir.h>
+ #   endif
+ #  else
+ #   include <dirent.h>
+ #   define NAMLEN(dirent) strlen((dirent)->d_name)
+ #  endif
+-#  include <sys/wait.h>
+-#  include <pwd.h>
++// #  include <sys/wait.h>
++// #  include <pwd.h>
+ # endif
+ # if !defined(S_ISDIR)
+ #  define S_ISDIR(mode) (((mode) & S_IFMT) == S_IFDIR)
+ # endif
+ # if !defined(S_ISREG)
+ #  define S_ISREG(mode) (((mode) & S_IFMT) == S_IFREG)
+ # endif
+ # include "wand/MagickWand.h"
+--- benchspec/CPU/541.leela_r/src/Leela.cpp	2016-05-10 19:04:32.000000000 
++++ benchspec/CPU/541.leela_r/src/Leela.cpp	2022-09-05 14:50:18.000000000 
+@@ -10,67 +10,82 @@
+ #include "Zobrist.h"
+ #include "GTP.h"
+ #include "Random.h"
+ #include "Utils.h"
+ #include "Matcher.h"
+ #include "SGFTree.h"
+ #include "UCTSearch.h"
+ 
++#ifdef __wasi__
++extern "C" {
++  int __cxa_exception_buffer_storage[256];
++  void* __cxa_allocate_exception(size_t s) {
++    return __cxa_exception_buffer_storage;
++  }
++  void* __cxa_free_exception(void* e) {}
++
++  void __cxa_throw(void* e, void* t, void(*d)(void*)) {
++    fprintf(stderr, "Exception thrown: %p %d %d\n", e, __cxa_exception_buffer_storage[0], __cxa_exception_buffer_storage[1]);
++    exit(1);
++  }
++}
++#endif
++
+ using namespace Utils;
+ 
+-int main (int argc, char *argv[]) {        
++int main (int argc, char *argv[]) {
+     int done = false;
+-    int gtp_mode;    
+-    std::string input;      
++    int gtp_mode;
++    std::string input;
+     std::string filename;
+-    
++
+     /* default to prompt */
+     gtp_mode = false;
+-    
+-    if (argc < 2) {    
++
++    if (argc < 2) {
+         std::cout << "No file specifided" << std::endl;
+         return EXIT_FAILURE;
+     } else {
+         filename.assign(argv[1]);
+     }
+ 
+     std::cout.setf(std::ios::unitbuf);
+     std::cin.setf(std::ios::unitbuf);
+-    std::cerr.setf(std::ios::unitbuf);    
+-    
++    std::cerr.setf(std::ios::unitbuf);
++
+ #if !defined(SPEC)
+     setbuf(stdout, NULL);
+     setbuf(stdin, NULL);
+-    setbuf(stderr, NULL);    
++    setbuf(stderr, NULL);
+ #endif
+-                    
+-    std::auto_ptr<Random> rng(new Random(5489UL));          
+-    Zobrist::init_zobrist(*rng);    
++
++    std::auto_ptr<Random> rng(new Random(5489UL));
++    Zobrist::init_zobrist(*rng);
+ 
+     Matcher::get_Matcher();
+-    
+-    std::auto_ptr<GameState> maingame(new GameState);                
++
++    std::auto_ptr<GameState> maingame(new GameState);
+ 
+     int counter = 0;
+-     
++
+     try {
+         for (;;) {
+             std::auto_ptr<SGFTree> sgftree(new SGFTree);
+ 
+-            sgftree->load_from_file(filename, counter++);                
++            sgftree->load_from_file(filename, counter++);
+             *maingame = sgftree->get_mainline();
+ 
+ 	    int move;
+             do {
+                 std::auto_ptr<UCTSearch> search(new UCTSearch(*maingame));
+ 
+                 move = search->think(maingame->get_to_move(), UCTSearch::NORMAL);
+ 
+-                maingame->play_move(move);  
+-                maingame->display_state();                              
++                maingame->play_move(move);
++                maingame->display_state();
+             } while (maingame->get_passes() < 2 && move != FastBoard::RESIGN);
+         }
+     } catch (std::exception & e) {
+     };
+ 
+     return 0;
+ }
+--- benchspec/CPU/544.nab_r/src/database.h	2010-01-26 22:20:00.000000000 
++++ benchspec/CPU/544.nab_r/src/database.h	2022-09-05 14:50:18.000000000 
+@@ -1,35 +1,35 @@
+ /*
+  *
+- * This software is copyrighted, 1995, by Tom Macke and David A. Case. 
+- * The following terms apply to all files associated with the software 
++ * This software is copyrighted, 1995, by Tom Macke and David A. Case.
++ * The following terms apply to all files associated with the software
+  * unless explicitly disclaimed in individual files.
+- * 
++ *
+  * The authors hereby grant permission to use, copy, modify, and re-distribute
+  * this software and its documentation for any purpose, provided
+  * that existing copyright notices are retained in all copies and that this
+  * notice is included verbatim in any distributions. No written agreement,
+  * license, or royalty fee is required for any of the authorized uses.
+  * Modifications to this software may be distributed provided that
+  * the nature of the modifications are clearly indicated.
+- * 
++ *
+  * IN NO EVENT SHALL THE AUTHORS OR DISTRIBUTORS BE LIABLE TO ANY PARTY
+  * FOR DIRECT, INDIRECT, SPECIAL, INCIDENTAL, OR CONSEQUENTIAL DAMAGES
+  * ARISING OUT OF THE USE OF THIS SOFTWARE, ITS DOCUMENTATION, OR ANY
+  * DERIVATIVES THEREOF, EVEN IF THE AUTHORS HAVE BEEN ADVISED OF THE
+  * POSSIBILITY OF SUCH DAMAGE.
+- * 
++ *
+  * THE AUTHORS AND DISTRIBUTORS SPECIFICALLY DISCLAIM ANY WARRANTIES,
+  * INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY,
+  * FITNESS FOR A PARTICULAR PURPOSE, AND NON-INFRINGEMENT.  THIS SOFTWARE
+  * IS PROVIDED ON AN "AS IS" BASIS, AND THE AUTHORS AND DISTRIBUTORS HAVE
+  * NO OBLIGATION TO PROVIDE MAINTENANCE, SUPPORT, UPDATES, ENHANCEMENTS, OR
+  * MODIFICATIONS.
+- * 
++ *
+  */
+ 
+ /*
+  *      File:   database.h
+  *
+  *      Description:
+  *              Routines to manage an object oriented database.
+  *              The database is an ASCII file with
+@@ -149,18 +149,18 @@
+  *
+  *	Routines used on both DB_RANDOM_ACCESS and
+  *	DB_SEQUENTIAL_ACCESS files.
+  */
+ 
+ 
+ #define	sDBName(d)	(d->sName)
+ 
+-extern  Bool    bDBGetType();           /* ( DATABASE, char*, int*, int* ) */
+-extern  Bool    bDBGetValue();          /* ( DATABASE, char*, int*, GENP, int) */
++extern  Bool    bDBGetType(DATABASE, char*, int*, int*);           /* ( DATABASE, char*, int*, int* ) */
++extern  Bool    bDBGetValue(DATABASE, char*, int*, char*, int);          /* ( DATABASE, char*, int*, GENP, int) */
+ extern  void    DBPutValue();           /* ( DATABASE, char*, int, int,
+                                                 GENP, int ) */
+ extern  Bool    bDBGetTableType();      /* ( DATABASE, char*, int*, int*,
+                                                 int*, char*,
+                                                 int*, char*,
+                                                 int*, char*,
+                                                 int*, char*,
+                                                 int*, char*,
+@@ -172,17 +172,34 @@
+                                                 int*, char*,
+                                                 int*, char*,
+                                                 int*, char*,
+                                                 int*, char*,
+                                                 int*, char*,
+                                                 int*, char*,
+                                                 int*, char* ) */
+ 
+-extern  Bool    bDBGetTable();          /* ( DATABASE, char*, int*,
++extern  Bool    bDBGetTable(DATABASE, char*, int*,
++                                                int, char*, int,
++                                                int, char*, int,
++                                                int, char*, int,
++                                                int, char*, int,
++                                                int, char*, int,
++                                                int, char*, int,
++                                      int, char*, int,
++                           int, char*, int,
++                                                int, char*, int,
++                                                int, char*, int,
++                                                int, char*, int,
++                                                int, char*, int,
++                                                int, char*, int,
++                                                int, char*, int,
++                                                int, char*, int,
++                                                int, char*, int,
++                                                int, char*, int);          /* ( DATABASE, char*, int*,
+                                                 int, GENP, int,
+                                                 int, GENP, int,
+                                                 int, GENP, int,
+                                                 int, GENP, int,
+                                                 int, GENP, int,
+                                                 int, GENP, int,
+ Each line:                                      int, GENP, int,
+  column, data, datainc                          int, GENP, int,
+--- benchspec/CPU/544.nab_r/src/molio.c	2013-09-23 03:40:56.000000000 
++++ benchspec/CPU/544.nab_r/src/molio.c	2022-09-05 14:50:18.000000000 
+@@ -92,23 +92,23 @@
+ static void fputpdb(FILE *, MOLECULE_T *, char *);
+ static void fputcif(FILE *, char *, MOLECULE_T *);
+ static void mk_brook_rname(char[], RESIDUE_T *);
+ static void mk_brook_aname(char[], char[], char[]);
+ static void mk_wwpdb_rname(char[], RESIDUE_T *);
+ static void mk_wwpdb_aname(char[], char[], char[]);
+ 
+ int get_mytaskid(void);
+-void reducerror(int);
++int reducerror(int);
+ char *ggets(char *, int, FILE *);
+ void upd_molnumbers(MOLECULE_T *);
+ MOLECULE_T *newmolecule(void);
+ int addstrand(MOLECULE_T *, char[]);
+ int addresidue(MOLECULE_T *, char[], RESIDUE_T *);
+-void select_atoms(MOLECULE_T *, char[]);
++int select_atoms(MOLECULE_T *, char[]);
+ int rt_errormsg_s(int, char[], char[]);
+ 
+ 
+ /***********************************************************************
+                             GETPDB()
+ ************************************************************************/
+ 
+ /*
+@@ -1313,17 +1313,17 @@
+ }
+ 
+ static void mk_wwpdb_aname(char aname[], char name[], char rname[])
+ {
+ 
+     /*
+      *      ---convert atom names to closely resemble those used by the
+      *         wwPDB in its "remdiated" files
+-     *       
++     *
+      *      ---First, assume that there are no two-character element names
+      *         (like Fe or Ca or Na).  Then, according to Brookhaven rules,
+      *         column 13 will be blank, and the name will be left-justified
+      *         starting in column 14.  UNLESS, the name is four characters
+      *         long!  In that case, don't use the first blank.
+      */
+ 
+     if (strlen(name) >= 4 && name[3] != ' '){
+@@ -1369,17 +1369,17 @@
+         aname[2] = aname[3];
+         aname[3] = ' ';
+     }
+ 
+ }
+ 
+ /*   Write out the molecule information in an "mmCIF-like" format; this
+      should come close to being correct, but probably will not be acceptable
+-     to all mmCIF parsers.  For now, it should just be considered as a 
++     to all mmCIF parsers.  For now, it should just be considered as a
+      prototype.  In particular, no changes are made to atom or residue
+      names:  whatever is in the molecule will be used.                   */
+ 
+ static void fputcif(FILE * fp, char *blockId, MOLECULE_T * mol)
+ {
+     int r, tr, a, ta, strandnum;
+     char cid;
+     STRAND_T *sp;
+@@ -1410,22 +1410,22 @@
+             res = sp->s_residues[r];
+             for (a = 0; a < res->r_natoms; a++) {
+                 ta++;
+                 ap = &res->r_atoms[a];
+ 
+ 
+                 /* following examples from NDB:
+                  ** auth_seq_id is the "absolute" residue number;
+-                 ** label_seq_id starts over from 1 at each new "strand"  
++                 ** label_seq_id starts over from 1 at each new "strand"
+                  */
+ 
+                 fprintf(fp,
+                         "%5d %-4s %3s %c %4d %8.3f %8.3f %8.3f %3d %4d\n",
+                         ta, ap->a_atomname, res->r_resname, cid, tr + 1,
+                         ap->a_pos[0], ap->a_pos[1], ap->a_pos[2],
+                         strandnum, r + 1);
+             }
+         }
+         if (mol->m_nstrands > 1)
+             cid++;
+     }
+ }
+--- benchspec/CPU/544.nab_r/src/prm.c	2016-08-16 21:35:25.000000000 
++++ benchspec/CPU/544.nab_r/src/prm.c	2022-09-05 14:50:18.000000000 
+@@ -1,16 +1,16 @@
+ /*
+  * COPYRIGHT 1992, REGENTS OF THE UNIVERSITY OF CALIFORNIA
+  *
+- *  prm.c - read information from an amber PARM topology file: 
+- *	atom/residue/bond/charge info, plus force field data. 
+- *	This file and the accompanying prm.h may be distributed 
+- *	provided this notice is retained unmodified and provided 
+- *	that any modifications to the rest of the file are noted 
++ *  prm.c - read information from an amber PARM topology file:
++ *	atom/residue/bond/charge info, plus force field data.
++ *	This file and the accompanying prm.h may be distributed
++ *	provided this notice is retained unmodified and provided
++ *	that any modifications to the rest of the file are noted
+  *	in comments.
+  *
+  *	Bill Ross, UCSF 1994
+  *
+  *  MPI function calls added by Russ Brown (russ.brown@sun.com).
+  *
+  *  With MPI, input is accomplished by task zero, and the results
+  *  are broadcast to the other tasks.  Output is accomplished by
+@@ -36,36 +36,36 @@
+ #ifndef MORT
+ ATOM_T *NAB_mnext();
+ #endif
+ 
+ #if defined(MPI) || defined(SCALAPACK)
+ #include "mpi.h"
+ #endif
+ 
+-extern int errno;
++// extern int errno;
+ 
+ static int compressed = 0;
+ static char e_msg[256];
+ 
+ static char SsFormat[81];       /* holds the current Fortran format  */
+ static int SiOnLine, SbWroteNothing, SiPerLine;
+ static FILE *SfFile;
+ 
+ /*
+- *       fortran formats 
++ *       fortran formats
+  *       9118 FORMAT(12I6)
+  *       9128 FORMAT(5E16.8)
+  */
+ 
+ char *f9118 = "%6d%6d%6d%6d%6d%6d%6d%6d%6d%6d%6d%6d\n";
+ 
+ int get_mytaskid(void);
+ int rt_errormsg_s(int, char[], char[]);
+-void reducerror(int);
++int reducerror(int);
+ 
+ /***********************************************************************
+                             GGETS()
+ ************************************************************************/
+ 
+ /* ggets() - call fgets for task 0 only; broadcast result to other tasks */
+ 
+ char *ggets(char *line, int count, FILE * file)
+@@ -565,25 +565,25 @@
+    prm->AtomRes = (int *) get(sizeof(int) * prm->Natom);
+    prm->N14pairs = (int *) get(sizeof(int) * prm->Natom);
+    prm->N14pairlist = (int *) get(sizeof(int) * 10 * prm->Natom);
+    iptmp = (int *) get(sizeof(int) * 12 * prm->Natom);
+    prm->Rborn = (REAL_T *) get(sizeof(REAL_T) * prm->Natom);
+    prm->Fs = (REAL_T *) get(sizeof(REAL_T) * prm->Natom);
+    prm->Gvdw = (REAL_T *) get(sizeof(REAL_T) * prm->Natom);
+ 
+-   /* 
++   /*
+     * READ ATOM NAMES -IH(M04)
+     */
+ 
+    pfind(file, newparm, "ATOM_NAME");
+    for (i = 0; i < (prm->Natom / 20 + (prm->Natom % 20 ? 1 : 0)); i++)
+       preadln(file, "", &prm->AtomNames[i * 80]);
+ 
+-   /* 
++   /*
+     * READ ATOM CHARGES -X(L15)
+     *    (pre-multiplied by an energy factor of 18.2223 == sqrt(332)
+     *     for faster force field calculations)
+     */
+ 
+    pfind(file, newparm, "CHARGE");
+    for (i = 0; i < prm->Natom; i++) {
+       if (get_mytaskid() == 0) {
+@@ -596,17 +596,17 @@
+    }
+ 
+ #if defined(MPI) || defined(SCALAPACK)
+    MPI_Bcast(prm->Charges, prm->Natom, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+ #endif
+ 
+    skipeoln(file);
+ 
+-   /* 
++   /*
+     * READ ATOM MASSES -X(L20)
+     */
+ 
+    pfind(file, newparm, "MASS");
+    for (i = 0; i < prm->Natom; i++) {
+       if (get_mytaskid() == 0) {
+ #ifdef NAB_DOUBLE_PRECISION
+          fscanf(file, " %le", &prm->Masses[i]);
+@@ -617,51 +617,51 @@
+    }
+ 
+ #if defined(MPI) || defined(SCALAPACK)
+    MPI_Bcast(prm->Masses, prm->Natom, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+ #endif
+ 
+    skipeoln(file);
+ 
+-   /* 
++   /*
+     * READ ATOM L-J TYPES -IX(I04)
+     */
+ 
+    pfind(file, newparm, "ATOM_TYPE_INDEX");
+    for (i = 0; i < prm->Natom; i++) {
+       if (get_mytaskid() == 0) {
+          fscanf(file, " %d", &prm->Iac[i]);
+       }
+    }
+ 
+ #if defined(MPI) || defined(SCALAPACK)
+    MPI_Bcast(prm->Iac, prm->Natom, MPI_INT, 0, MPI_COMM_WORLD);
+ #endif
+ 
+    skipeoln(file);
+ 
+-   /* 
++   /*
+     * READ ATOM INDEX TO 1st IN EXCLUDED ATOM LIST "NATEX" -IX(I08)
+     */
+ 
+    pfind(file, newparm, "NUMBER_EXCLUDED_ATOMS");
+    for (i = 0; i < prm->Natom; i++) {
+       if (get_mytaskid() == 0) {
+          fscanf(file, " %d", &prm->Iblo[i]);
+       }
+    }
+ 
+ #if defined(MPI) || defined(SCALAPACK)
+    MPI_Bcast(prm->Iblo, prm->Natom, MPI_INT, 0, MPI_COMM_WORLD);
+ #endif
+ 
+    skipeoln(file);
+ 
+-   /* 
++   /*
+     * READ TYPE INDEX TO N-B TYPE -IX(I06)
+     */
+ 
+    pfind(file, newparm, "NONBONDED_PARM_INDEX");
+    for (i = 0; i < prm->Ntype2d; i++) {
+       if (get_mytaskid() == 0) {
+          fscanf(file, " %d", &prm->Cno[i]);
+          if (prm->Cno[i] < 0 && !i10_12) {
+@@ -675,25 +675,25 @@
+    }
+ 
+ #if defined(MPI) || defined(SCALAPACK)
+    MPI_Bcast(prm->Cno, prm->Ntype2d, MPI_INT, 0, MPI_COMM_WORLD);
+ #endif
+ 
+    skipeoln(file);
+ 
+-   /* 
++   /*
+     * READ RES NAMES (4 chars each, 4th blank) -IH(M02)
+     */
+ 
+    pfind(file, newparm, "RESIDUE_LABEL");
+    for (i = 0; i < (prm->Nres / 20 + (prm->Nres % 20 ? 1 : 0)); i++)
+       preadln(file, "", &prm->ResNames[i * 80]);
+ 
+-   /* 
++   /*
+     * READ RES POINTERS TO 1st ATOM              -IX(I02)
+     */
+ 
+    pfind(file, newparm, "RESIDUE_POINTER");
+    for (i = 0; i < prm->Nres; i++) {
+       if (get_mytaskid() == 0) {
+          fscanf(file, " %d", &prm->Ipres[i]);
+       }
+@@ -701,17 +701,17 @@
+ 
+ #if defined(MPI) || defined(SCALAPACK)
+    MPI_Bcast(prm->Ipres, prm->Nres, MPI_INT, 0, MPI_COMM_WORLD);
+ #endif
+ 
+    prm->Ipres[prm->Nres] = prm->Natom + 1;
+    skipeoln(file);
+ 
+-   /* 
++   /*
+     * READ BOND FORCE CONSTANTS                  -RK()
+     */
+ 
+    pfind(file, newparm, "BOND_FORCE_CONSTANT");
+    for (i = 0; i < prm->Numbnd; i++) {
+       if (get_mytaskid() == 0) {
+ #ifdef NAB_DOUBLE_PRECISION
+          fscanf(file, " %lf", &prm->Rk[i]);
+@@ -722,17 +722,17 @@
+    }
+ 
+ #if defined(MPI) || defined(SCALAPACK)
+    MPI_Bcast(prm->Rk, prm->Numbnd, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+ #endif
+ 
+    skipeoln(file);
+ 
+-   /* 
++   /*
+     * READ BOND LENGTH OF MINIMUM ENERGY                 -REQ()
+     */
+ 
+    pfind(file, newparm, "BOND_EQUIL_VALUE");
+    for (i = 0; i < prm->Numbnd; i++) {
+       if (get_mytaskid() == 0) {
+ #ifdef NAB_DOUBLE_PRECISION
+          fscanf(file, " %lf", &prm->Req[i]);
+@@ -743,17 +743,17 @@
+    }
+ 
+ #if defined(MPI) || defined(SCALAPACK)
+    MPI_Bcast(prm->Req, prm->Numbnd, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+ #endif
+ 
+    skipeoln(file);
+ 
+-   /* 
++   /*
+     * READ BOND ANGLE FORCE CONSTANTS (following Rk nomen) -TK()
+     */
+ 
+    pfind(file, newparm, "ANGLE_FORCE_CONSTANT");
+    for (i = 0; i < prm->Numang; i++) {
+       if (get_mytaskid() == 0) {
+ #ifdef NAB_DOUBLE_PRECISION
+          fscanf(file, " %lf", &prm->Tk[i]);
+@@ -764,17 +764,17 @@
+    }
+ 
+ #if defined(MPI) || defined(SCALAPACK)
+    MPI_Bcast(prm->Tk, prm->Numang, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+ #endif
+ 
+    skipeoln(file);
+ 
+-   /* 
++   /*
+     * READ BOND ANGLE OF MINIMUM ENERGY (following Req nomen) -TEQ()
+     */
+ 
+    pfind(file, newparm, "ANGLE_EQUIL_VALUE");
+    for (i = 0; i < prm->Numang; i++) {
+       if (get_mytaskid() == 0) {
+ #ifdef NAB_DOUBLE_PRECISION
+          fscanf(file, " %lf", &prm->Teq[i]);
+@@ -785,17 +785,17 @@
+    }
+ 
+ #if defined(MPI) || defined(SCALAPACK)
+    MPI_Bcast(prm->Teq, prm->Numang, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+ #endif
+ 
+    skipeoln(file);
+ 
+-   /* 
++   /*
+     * READ DIHEDRAL PEAK MAGNITUDE               -PK()
+     */
+ 
+    pfind(file, newparm, "DIHEDRAL_FORCE_CONSTANT");
+    for (i = 0; i < prm->Nptra; i++) {
+       if (get_mytaskid() == 0) {
+ #ifdef NAB_DOUBLE_PRECISION
+          fscanf(file, " %lf", &prm->Pk[i]);
+@@ -806,43 +806,43 @@
+    }
+ 
+ #if defined(MPI) || defined(SCALAPACK)
+    MPI_Bcast(prm->Pk, prm->Nptra, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+ #endif
+ 
+    skipeoln(file);
+ 
+-   /* 
++   /*
+     * READ DIHEDRAL PERIODICITY                  -PN()
+     */
+ 
+    pfind(file, newparm, "DIHEDRAL_PERIODICITY");
+    for (i = 0; i < prm->Nptra; i++) {
+       if (get_mytaskid() == 0) {
+ #ifdef NAB_DOUBLE_PRECISION
+          fscanf(file, " %lf", &prm->Pn[i]);
+ #else
+          fscanf(file, " %f", &prm->Pn[i]);
+ #endif
+          if( prm->Pn[i] == 0 ){
+-            fprintf( stderr, 
++            fprintf( stderr,
+                "Found an invalid periodicity in the prmtop file: %d\n", i );
+             exit(1);
+          }
+       }
+    }
+ 
+ #if defined(MPI) || defined(SCALAPACK)
+    MPI_Bcast(prm->Pn, prm->Nptra, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+ #endif
+ 
+    skipeoln(file);
+ 
+-   /* 
++   /*
+     * READ DIHEDRAL PHASE                        -PHASE()
+     */
+ 
+    pfind(file, newparm, "DIHEDRAL_PHASE");
+    for (i = 0; i < prm->Nptra; i++) {
+       if (get_mytaskid() == 0) {
+ #ifdef NAB_DOUBLE_PRECISION
+          fscanf(file, " %lf", &prm->Phase[i]);
+@@ -853,17 +853,17 @@
+    }
+ 
+ #if defined(MPI) || defined(SCALAPACK)
+    MPI_Bcast(prm->Phase, prm->Nptra, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+ #endif
+ 
+    skipeoln(file);
+ 
+-   /* 
++   /*
+     * ?? "RESERVED"                              -SOLTY()
+     */
+ 
+    pfind(file, newparm, "SOLTY");
+    for (i = 0; i < prm->Natyp; i++) {
+       if (get_mytaskid() == 0) {
+ #ifdef NAB_DOUBLE_PRECISION
+          fscanf(file, " %lf", &prm->Solty[i]);
+@@ -874,17 +874,17 @@
+    }
+ 
+ #if defined(MPI) || defined(SCALAPACK)
+    MPI_Bcast(prm->Solty, prm->Natyp, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+ #endif
+ 
+    skipeoln(file);
+ 
+-   /* 
++   /*
+     * READ L-J R**12 FOR ALL PAIRS OF ATOM TYPES         -CN1()
+     *    (SHOULD BE 0 WHERE H-BONDS)
+     */
+ 
+    pfind(file, newparm, "LENNARD_JONES_ACOEF");
+    for (i = 0; i < prm->Nttyp; i++) {
+       if (get_mytaskid() == 0) {
+ #ifdef NAB_DOUBLE_PRECISION
+@@ -896,17 +896,17 @@
+    }
+ 
+ #if defined(MPI) || defined(SCALAPACK)
+    MPI_Bcast(prm->Cn1, prm->Nttyp, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+ #endif
+ 
+    skipeoln(file);
+ 
+-   /* 
++   /*
+     * READ L-J R**6 FOR ALL PAIRS OF ATOM TYPES  -CN2()
+     *    (SHOULD BE 0 WHERE H-BONDS)
+     */
+ 
+    pfind(file, newparm, "LENNARD_JONES_BCOEF");
+    for (i = 0; i < prm->Nttyp; i++) {
+       if (get_mytaskid() == 0) {
+ #ifdef NAB_DOUBLE_PRECISION
+@@ -918,18 +918,18 @@
+    }
+ 
+ #if defined(MPI) || defined(SCALAPACK)
+    MPI_Bcast(prm->Cn2, prm->Nttyp, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+ #endif
+ 
+    skipeoln(file);
+ 
+-   /* 
+-    * READ COVALENT BOND W/ HYDROGEN (3*(atnum-1)): 
++   /*
++    * READ COVALENT BOND W/ HYDROGEN (3*(atnum-1)):
+     *    IBH = ATOM1             -IX(I12)
+     *    JBH = ATOM2             -IX(I14)
+     *    ICBH = BOND ARRAY PTR   -IX(I16)
+     */
+ 
+    pfind(file, newparm, "BONDS_INC_HYDROGEN");
+    for (i = 0; i < prm->Nbonh; i++) {
+       if (get_mytaskid() == 0) {
+@@ -941,17 +941,17 @@
+ #if defined(MPI) || defined(SCALAPACK)
+    MPI_Bcast(prm->BondHAt1, prm->Nbonh, MPI_INT, 0, MPI_COMM_WORLD);
+    MPI_Bcast(prm->BondHAt2, prm->Nbonh, MPI_INT, 0, MPI_COMM_WORLD);
+    MPI_Bcast(prm->BondHNum, prm->Nbonh, MPI_INT, 0, MPI_COMM_WORLD);
+ #endif
+ 
+    skipeoln(file);
+ 
+-   /* 
++   /*
+     * READ COVALENT BOND W/OUT HYDROGEN (3*(atnum-1)):
+     *    IB = ATOM1              -IX(I18)
+     *    JB = ATOM2              -IX(I20)
+     *    ICB = BOND ARRAY PTR    -IX(I22)
+     */
+ 
+    pfind(file, newparm, "BONDS_WITHOUT_HYDROGEN");
+    for (i = 0; i < prm->Nbona; i++) {
+@@ -964,18 +964,18 @@
+ #if defined(MPI) || defined(SCALAPACK)
+    MPI_Bcast(prm->BondAt1, prm->Nbona, MPI_INT, 0, MPI_COMM_WORLD);
+    MPI_Bcast(prm->BondAt2, prm->Nbona, MPI_INT, 0, MPI_COMM_WORLD);
+    MPI_Bcast(prm->BondNum, prm->Nbona, MPI_INT, 0, MPI_COMM_WORLD);
+ #endif
+ 
+    skipeoln(file);
+ 
+-   /* 
+-    * READ ANGLE W/ HYDROGEN: 
++   /*
++    * READ ANGLE W/ HYDROGEN:
+     *    ITH = ATOM1                     -IX(I24)
+     *    JTH = ATOM2                     -IX(I26)
+     *    KTH = ATOM3                     -IX(I28)
+     *    ICTH = ANGLE ARRAY PTR          -IX(I30)
+     */
+ 
+    pfind(file, newparm, "ANGLES_INC_HYDROGEN");
+    for (i = 0; i < prm->Ntheth; i++) {
+@@ -990,18 +990,18 @@
+    MPI_Bcast(prm->AngleHAt1, prm->Ntheth, MPI_INT, 0, MPI_COMM_WORLD);
+    MPI_Bcast(prm->AngleHAt2, prm->Ntheth, MPI_INT, 0, MPI_COMM_WORLD);
+    MPI_Bcast(prm->AngleHAt3, prm->Ntheth, MPI_INT, 0, MPI_COMM_WORLD);
+    MPI_Bcast(prm->AngleHNum, prm->Ntheth, MPI_INT, 0, MPI_COMM_WORLD);
+ #endif
+ 
+    skipeoln(file);
+ 
+-   /* 
+-    * READ ANGLE W/OUT HYDROGEN: 
++   /*
++    * READ ANGLE W/OUT HYDROGEN:
+     *    IT = ATOM1                      -IX(I32)
+     *    JT = ATOM2                      -IX(I34)
+     *    KT = ATOM3                      -IX(I36)
+     *    ICT = ANGLE ARRAY PTR           -IX(I38)
+     */
+ 
+    pfind(file, newparm, "ANGLES_WITHOUT_HYDROGEN");
+    for (i = 0; i < prm->Ntheta; i++) {
+@@ -1016,18 +1016,18 @@
+    MPI_Bcast(prm->AngleAt1, prm->Ntheta, MPI_INT, 0, MPI_COMM_WORLD);
+    MPI_Bcast(prm->AngleAt2, prm->Ntheta, MPI_INT, 0, MPI_COMM_WORLD);
+    MPI_Bcast(prm->AngleAt3, prm->Ntheta, MPI_INT, 0, MPI_COMM_WORLD);
+    MPI_Bcast(prm->AngleNum, prm->Ntheta, MPI_INT, 0, MPI_COMM_WORLD);
+ #endif
+ 
+    skipeoln(file);
+ 
+-   /* 
+-    * READ DIHEDRAL W/ HYDROGEN: 
++   /*
++    * READ DIHEDRAL W/ HYDROGEN:
+     *    ITH = ATOM1                     -IX(40)
+     *    JTH = ATOM2                     -IX(42)
+     *    KTH = ATOM3                     -IX(44)
+     *    LTH = ATOM4                     -IX(46)
+     *    ICTH = DIHEDRAL ARRAY PTR       -IX(48)
+     */
+ 
+    pfind(file, newparm, "DIHEDRALS_INC_HYDROGEN");
+@@ -1044,18 +1044,18 @@
+    MPI_Bcast(prm->DihHAt2, prm->Nphih, MPI_INT, 0, MPI_COMM_WORLD);
+    MPI_Bcast(prm->DihHAt3, prm->Nphih, MPI_INT, 0, MPI_COMM_WORLD);
+    MPI_Bcast(prm->DihHAt4, prm->Nphih, MPI_INT, 0, MPI_COMM_WORLD);
+    MPI_Bcast(prm->DihHNum, prm->Nphih, MPI_INT, 0, MPI_COMM_WORLD);
+ #endif
+ 
+    skipeoln(file);
+ 
+-   /* 
+-    * READ DIHEDRAL W/OUT HYDROGEN: 
++   /*
++    * READ DIHEDRAL W/OUT HYDROGEN:
+     *    IT = ATOM1
+     *    JT = ATOM2
+     *    KT = ATOM3
+     *    LT = ATOM4
+     *    ICT = DIHEDRAL ARRAY PTR
+     */
+ 
+    pfind(file, newparm, "DIHEDRALS_WITHOUT_HYDROGEN");
+@@ -1362,18 +1362,18 @@
+       if (get_mytaskid() == 0) {
+          fprintf(nabout,
+                  "old prmtop format => using old algorithm for GB parms\n");
+       }
+       prm->Fsmax = 0.0;
+       for (i = 0; i < prm->Natom; i++) {
+ 
+          /*
+-          **               set the radii scale factors for the approximate pairwise method 
+-          **                               prm->Rborn[] values below are from the Bondi set of radii; 
++          **               set the radii scale factors for the approximate pairwise method
++          **                               prm->Rborn[] values below are from the Bondi set of radii;
+           **              The prm->Fs[] are
+           **              scale factors taken from Jay Ponder's tinker program.
+           */
+ 
+          atsymb = prm->AtomNames[4 * i];        /* first letter atom name */
+ 
+          if (atsymb == 'H') {
+             prm->Fs[i] = 0.85;
+@@ -1435,17 +1435,17 @@
+ 
+       }
+    }
+ 
+    genclose(file, compressed);
+ 
+    /*  AGBNP parameters   */
+ 
+-   /*  
++   /*
+     *  Get an array of parameters a-sub-i from Eq. 30 of Gallicchio & Levy;
+     *  Store this in prm->Gvdw[i].
+     *
+     *  First, get the a-sub-i parameters indexed by atom types,
+     *  using Eqs. 31-33:
+     */
+ 
+ #define SIGMAW (3.15365)
+@@ -1567,47 +1567,47 @@
+ {
+    SiPerLine = iPerLine;
+    strcpy(SsFormat, sFormat);
+    SiOnLine = 0;
+    SbWroteNothing = TRUE;
+ }
+ 
+ /*
+- *      Write an integer out to the file, increment the number of entries on 
++ *      Write an integer out to the file, increment the number of entries on
+  *      the line, if it is equal to SiPerLine, then move to the next line.
+  */
+ void FortranWriteInt(int iVal)
+ {
+    fprintf(SfFile, SsFormat, iVal);
+    SiOnLine++;
+    SbWroteNothing = FALSE;
+    if (SiOnLine >= SiPerLine) {
+       fprintf(SfFile, "\n");
+       SiOnLine = 0;
+    }
+ }
+ 
+ /*
+- *      Write a double out to the file, increment the number of entries on 
++ *      Write a double out to the file, increment the number of entries on
+  *      the line, if it is equal to SiPerLine, then move to the next line.
+  */
+ void FortranWriteDouble(double dVal)
+ {
+    fprintf(SfFile, SsFormat, dVal);
+    SiOnLine++;
+    SbWroteNothing = FALSE;
+    if (SiOnLine >= SiPerLine) {
+       fprintf(SfFile, "\n");
+       SiOnLine = 0;
+    }
+ }
+ 
+ /*
+- *      Write a String out to the file, increment the number of entries on 
++ *      Write a String out to the file, increment the number of entries on
+  *      the line, if it is equal to SiPerLine, then move to the next line.
+  */
+ void FortranWriteString(char *sVal)
+ {
+    fprintf(SfFile, SsFormat, sVal);
+    SiOnLine++;
+    SbWroteNothing = FALSE;
+    if (SiOnLine >= SiPerLine) {
+@@ -2095,18 +2095,18 @@
+ 
+             for (i = 0; i < iVarArrayElementCount(uUnit->vaResidues); i++) {
+                if (PVAI(uUnit->vaResidues, SAVERESIDUEt, i)->
+                    sResidueType[0] == RESTYPESOLVENT)
+                   break;
+             }
+             iTemp = i;
+ 
+-            /* 
+-             *  Find the molecules and return the number of ATOMs in each 
++            /*
++             *  Find the molecules and return the number of ATOMs in each
+              *  molecule, along with the index of the first solvent molecule
+              */
+ 
+             vaMolecules = vaVarArrayCreate(sizeof(int));
+             zUnitIOFindAndCountMolecules(uUnit, &vaMolecules,
+                                          &iFirstSolvent);
+ 
+             FortranFormat(1, "%-80s");
+--- 
++++ config/docker.cfg	2022-09-05 14:50:18.000000000 
+@@ -0,0 +1,361 @@
++#------------------------------------------------------------------------------
++# SPEC CPU2017 config file for: gcc / g++ / gfortran on Linux x86
++#------------------------------------------------------------------------------
++#
++# Usage: (1) Copy this to a new name
++#             cd $SPEC/config
++#             cp Example-x.cfg myname.cfg
++#        (2) Change items that are marked 'EDIT' (search for it)
++#
++# SPEC tested this config file with:
++#    Compiler version(s):    4.4.7, 4.9.2, 5.2.0, 6.3.0
++#    Operating system(s):    Oracle Linux Server 6.5 and 7.2 /
++#                            Red Hat Enterprise Linux Server 6.5 and 7.2
++#    Hardware:               Xeon
++#
++# If your system differs, this config file might not work.
++# You might find a better config file at http://www.spec.org/cpu2017/results
++#
++# Known Limitations with GCC 4
++#
++#   (1) Possible problem: compile time messages
++#                             error: unrecognized command line option '...'
++#      Recommendation:    Use a newer version of the compiler.
++#                         If that is not possible, remove the unrecognized
++#                         option from this config file.
++#
++#   (2) Possible problem: run time errors messages
++#           527.cam4_r or 627.cam4_s    *** Miscompare of cam4_validate.txt
++#      Recommendation: Use a newer version of the compiler.
++#                      If that is not possible, try reducing the optimization.
++#
++# Compiler issues: Contact your compiler vendor, not SPEC.
++# For SPEC help:   http://www.spec.org/cpu2017/Docs/techsupport.html
++#------------------------------------------------------------------------------
++
++
++#--------- Label --------------------------------------------------------------
++# Arbitrary string to tag binaries
++#                  Two Suggestions: # (1) EDIT this label as you try new ideas.
++%define label docker                # (2)      Use a label meaningful to *you*.
++
++
++#--------- Preprocessor -------------------------------------------------------
++%ifndef %{bits}                # EDIT to control 32 or 64 bit compilation.  Or,
++%   define  bits        64     #      you can set it on the command line using:
++%endif                         #      'runcpu --define bits=nn'
++
++%ifndef %{build_ncpus}         # EDIT to adjust number of simultaneous compiles.
++%   define  build_ncpus 8      #      Or, you can set it on the command line:
++%endif                         #      'runcpu --define build_ncpus=nn'
++
++# Don't change this part.
++%define    os           LINUX
++%if %{bits} == 64
++%   define model        -m64
++%elif %{bits} == 32
++%   define model        -m32
++%else
++%   error Please define number of bits - see instructions in config file
++%endif
++
++
++#--------- Global Settings ----------------------------------------------------
++# For info, see:
++#            https://www.spec.org/cpu2017/Docs/config.html#fieldname
++#   Example: https://www.spec.org/cpu2017/Docs/config.html#tune
++
++command_add_redirect = 1
++flagsurl             = $[top]/config/flags/gcc.xml
++ignore_errors        = 1
++iterations           = 1
++label                = %{label}-m%{bits}
++line_width           = 1020
++log_line_width       = 1020
++makeflags            = --jobs=%{build_ncpus}
++mean_anyway          = 1
++output_format        = txt,html,cfg,pdf,csv
++preenv               = 1
++reportable           = 0
++tune                 = base
++strict_rundir_verify = no
++
++
++#--------- How Many CPUs? -----------------------------------------------------
++# Both SPECrate and SPECspeed can test multiple chips / cores / hw threads
++#    - For SPECrate,  you set the number of copies.
++#    - For SPECspeed, you set the number of threads.
++# See: https://www.spec.org/cpu2017/Docs/system-requirements.html#MultipleCPUs
++#
++#    q. How many should I set?
++#    a. Unknown, you will have to try it and see!
++#
++# To get you started, some suggestions:
++#
++#     copies - This config file defaults to testing only 1 copy.   You might
++#              try changing it to match the number of cores on your system,
++#              or perhaps the number of virtual CPUs as reported by:
++#                     grep -c processor /proc/cpuinfo
++#              Be sure you have enough memory.  See:
++#              https://www.spec.org/cpu2017/Docs/system-requirements.html#memory
++#
++#     threads - This config file sets a starting point.  You could try raising
++#               it.  A higher thread count is much more likely to be useful for
++#               fpspeed than for intspeed.
++#
++intrate,fprate:
++   copies           = 1   # EDIT to change number of copies (see above)
++intspeed,fpspeed:
++   threads          = 4   # EDIT to change number of OpenMP threads (see above)
++
++
++#------- Compilers ------------------------------------------------------------
++default:
++#                    EDIT: the directory where your compiler is installed
++%ifndef %{gcc_dir}
++%   define  gcc_dir        /usr
++%endif
++
++# EDIT if needed: the preENV line adds library directories to the runtime
++#      path.  You can adjust it, or add lines for other environment variables.
++#      See: https://www.spec.org/cpu2017/Docs/config.html#preenv
++#      and: https://gcc.gnu.org/onlinedocs/gcc/Environment-Variables.html
++   preENV_LD_LIBRARY_PATH  = %{gcc_dir}/lib64/:%{gcc_dir}/lib/:/lib64
++  #preENV_LD_LIBRARY_PATH  = %{gcc_dir}/lib64/:%{gcc_dir}/lib/:/lib64:%{ENV_LD_LIBRARY_PATH}
++   SPECLANG                = %{gcc_dir}/bin/
++   CC                      = $(SPECLANG)gcc     -std=c99   %{model}
++   CXX                     = $(SPECLANG)g++     -std=c++11 %{model}
++   FC                      = $(SPECLANG)gfortran           %{model}
++   # How to say "Show me your version, please"
++   CC_VERSION_OPTION       = -v
++   CXX_VERSION_OPTION      = -v
++   FC_VERSION_OPTION       = -v
++
++default:
++%if %{bits} == 64
++   sw_base_ptrsize = 64-bit
++   sw_peak_ptrsize = 64-bit
++%else
++   sw_base_ptrsize = 32-bit
++   sw_peak_ptrsize = 32-bit
++%endif
++
++
++#--------- Portability --------------------------------------------------------
++default:               # data model applies to all benchmarks
++%if %{bits} == 32
++    # Strongly recommended because at run-time, operations using modern file
++    # systems may fail spectacularly and frequently (or, worse, quietly and
++    # randomly) if a program does not accommodate 64-bit metadata.
++    EXTRA_PORTABILITY = -D_FILE_OFFSET_BITS=64 -fpermissive
++%else
++    EXTRA_PORTABILITY = -DSPEC_LP64 -fpermissive
++%endif
++
++# Benchmark-specific portability (ordered by last 2 digits of bmark number)
++
++500.perlbench_r,600.perlbench_s:  #lang='C'
++%if %{bits} == 32
++%   define suffix IA32
++%else
++%   define suffix X64
++%endif
++   PORTABILITY    = -DSPEC_%{os}_%{suffix}
++
++521.wrf_r,621.wrf_s:  #lang='F,C'
++   CPORTABILITY  = -DSPEC_CASE_FLAG
++   FPORTABILITY  = -fconvert=big-endian
++
++523.xalancbmk_r,623.xalancbmk_s:  #lang='CXX'
++   PORTABILITY   = -DSPEC_%{os}
++
++526.blender_r:  #lang='CXX,C'
++   PORTABILITY   = -funsigned-char -DSPEC_LINUX
++
++527.cam4_r,627.cam4_s:  #lang='F,C'
++   PORTABILITY   = -DSPEC_CASE_FLAG
++
++538.imagick_r:
++   PORTABILITY   = -D_WASI_EMULATED_SIGNAL -lwasi-emulated-signal
++
++628.pop2_s:  #lang='F,C'
++   CPORTABILITY    = -DSPEC_CASE_FLAG
++   FPORTABILITY    = -fconvert=big-endian
++
++
++#-------- Tuning Flags common to Base and Peak --------------------------------
++
++#
++# Speed (OpenMP and Autopar allowed)
++#
++%if %{bits} == 32
++   intspeed,fpspeed:
++   #
++   # Many of the speed benchmarks (6nn.benchmark_s) do not fit in 32 bits
++   # If you wish to run SPECint2017_speed or SPECfp2017_speed, please use
++   #
++   #     runcpu --define bits=64
++   #
++   fail_build = 1
++%else
++   intspeed,fpspeed:
++      EXTRA_OPTIMIZE = -fopenmp -DSPEC_OPENMP
++   fpspeed:
++      #
++      # 627.cam4 needs a big stack; the preENV will apply it to all
++      # benchmarks in the set, as required by the rules.
++      #
++      preENV_OMP_STACKSIZE = 120M
++%endif
++
++
++#--------  Baseline Tuning Flags ----------------------------------------------
++#
++# EDIT if needed -- Older GCC might not support some of the optimization
++#                   switches here.  See also 'About the -fno switches' below.
++#
++default=base:         # flags for all base
++   OPTIMIZE       = -g -O3 -march=native -fno-unsafe-math-optimizations -fno-tree-loop-vectorize -w
++
++intrate,intspeed=base: # flags for integer base
++%if %{bits} == 32
++    EXTRA_COPTIMIZE = -fgnu89-inline -fno-strict-aliasing
++%else
++    EXTRA_COPTIMIZE = -fno-strict-aliasing
++    LDCFLAGS        = -z muldefs
++%endif
++# Notes about the above
++#  - 500.perlbench_r/600.perlbench_s needs -fno-strict-aliasing.
++#  - 502.gcc_r/602.gcc_s             needs -fgnu89-inline or -z muldefs
++#  - For 'base', all benchmarks in a set must use the same options.
++#  - Therefore, all base benchmarks get the above.  See:
++#       www.spec.org/cpu2017/Docs/runrules.html#BaseFlags
++#       www.spec.org/cpu2017/Docs/benchmarks/500.perlbench_r.html
++#       www.spec.org/cpu2017/Docs/benchmarks/502.gcc_r.html
++
++
++#--------  Peak Tuning Flags ----------------------------------------------
++default=peak:
++   basepeak = yes  # if you develop some peak tuning, remove this line.
++   #
++   # -----------------------
++   # About the -fno switches
++   # -----------------------
++   #
++   # For 'base', this config file (conservatively) disables some optimizations.
++   # You might want to try turning some of them back on, by creating a 'peak'
++   # section here, with individualized benchmark options:
++   #
++   #        500.perlbench_r=peak:
++   #           OPTIMIZE = this
++   #        502.gcc_r=peak:
++   #           OPTIMIZE = that
++   #        503.bwaves_r=peak:
++   #           OPTIMIZE = other   .....(and so forth)
++   #
++   # If you try it:
++   #   - You must remove the 'basepeak' option, above.
++   #   - You will need time and patience, to diagnose and avoid any errors.
++   #   - perlbench is unlikely to work with strict aliasing
++   #   - Some floating point benchmarks may get wrong answers, depending on:
++   #         the particular chip
++   #         the version of GCC
++   #         other optimizations enabled
++   #         -m32 vs. -m64
++   #   - See: http://www.spec.org/cpu2017/Docs/config.html
++   #   - and: http://www.spec.org/cpu2017/Docs/runrules.html
++
++
++#------------------------------------------------------------------------------
++# Tester and System Descriptions - EDIT all sections below this point
++#------------------------------------------------------------------------------
++#   For info about any field, see
++#             https://www.spec.org/cpu2017/Docs/config.html#fieldname
++#   Example:  https://www.spec.org/cpu2017/Docs/config.html#hw_memory
++#-------------------------------------------------------------------------------
++
++#--------- EDIT to match your version -----------------------------------------
++default:
++   sw_compiler001   = C/C++/Fortran: Version 6.2.0 of GCC, the
++   sw_compiler002   = GNU Compiler Collection
++
++#--------- EDIT info about you ------------------------------------------------
++# To understand the difference between hw_vendor/sponsor/tester, see:
++#     https://www.spec.org/cpu2017/Docs/config.html#test_sponsor
++intrate,intspeed,fprate,fpspeed: # Important: keep this line
++   hw_vendor          = My Corporation
++   tester             = My Corporation
++   test_sponsor       = My Corporation
++   license_num        = nnn (Your SPEC license number)
++#  prepared_by        = # Ima Pseudonym                       # Whatever you like: is never output
++
++
++#--------- EDIT system availability dates -------------------------------------
++intrate,intspeed,fprate,fpspeed: # Important: keep this line
++                        # Example                             # Brief info about field
++   hw_avail           = # Nov-2099                            # Date of LAST hardware component to ship
++   sw_avail           = # Nov-2099                            # Date of LAST software component to ship
++
++#--------- EDIT system information --------------------------------------------
++intrate,intspeed,fprate,fpspeed: # Important: keep this line
++                        # Example                             # Brief info about field
++#  hw_cpu_name        = # Intel Xeon E9-9999 v9               # chip name
++   hw_cpu_nominal_mhz = # 9999                                # Nominal chip frequency, in MHz
++   hw_cpu_max_mhz     = # 9999                                # Max chip frequency, in MHz
++#  hw_disk            = # 9 x 9 TB SATA III 9999 RPM          # Size, type, other perf-relevant info
++   hw_model           = # TurboBlaster 3000                   # system model name
++#  hw_nchips          = # 99                                  # number chips enabled
++   hw_ncores          = # 9999                                # number cores enabled
++   hw_ncpuorder       = # 1-9 chips                           # Ordering options
++   hw_nthreadspercore = # 9                                   # number threads enabled per core
++   hw_other           = # TurboNUMA Router 10 Gb              # Other perf-relevant hw, or "None"
++
++#  hw_memory001       = # 999 GB (99 x 9 GB 2Rx4 PC4-2133P-R, # The 'PCn-etc' is from the JEDEC
++#  hw_memory002       = # running at 1600 MHz)                # label on the DIMM.
++
++   hw_pcache          = # 99 KB I + 99 KB D on chip per core  # Primary cache size, type, location
++   hw_scache          = # 99 KB I+D on chip per 9 cores       # Second cache or "None"
++   hw_tcache          = # 9 MB I+D on chip per chip           # Third  cache or "None"
++   hw_ocache          = # 9 GB I+D off chip per system board  # Other cache or "None"
++
++   fw_bios            = # American Megatrends 39030100 02/29/2016 # Firmware information
++#  sw_file            = # ext99                               # File system
++#  sw_os001           = # Linux Sailboat                      # Operating system
++#  sw_os002           = # Distribution 7.2 SP1                # and version
++   sw_other           = # TurboHeap Library V8.1              # Other perf-relevant sw, or "None"
++#  sw_state           = # Run level 99                        # Software state.
++
++# Note: Some commented-out fields above are automatically set to preliminary
++# values by sysinfo
++#       https://www.spec.org/cpu2017/Docs/config.html#sysinfo
++# Uncomment lines for which you already know a better answer than sysinfo
++
++__HASH__
++531.deepsjeng_r=base=docker-m64:
++# Last updated 2022-03-01 15:01:45
++opthash=db53606fcbee23d18b8ac4643a5aa3425b66b046e8c12f488adcc8c8f74d0f01
++baggage=
++compiler_version=\
++@eNp9VE1v2zAMvftX+NYNseI2KbImgA9Z6nYD0qZI3a3YJZAl2lEjS54+EmeH/fbJzpeRFrvYEJ9I\
++PpKP8ievr5PFj3j+/H32uJg9Je438l40E7mfWsYNYsLXJRDd9Saz6TSeJIv7ySQKrVZhykSYdzpH\
++YJrMFj/n46eneL67wFka5oSE1c1gMbhGnAlboVzYcBhyI9FG4bIE5c3u7qaz8e0iGc/v42TxOH6I\
++nyOxLk2FhBQwWmp8fuc2vhu/TJPoykuwysGM/PMc3kSKjOVWAfU3zCxHfrcbakVCcrD7aO0jVGOo\
++XOVrUJpJEV28pFYY6w+7/e4luvpim+PV395l9/L64uCQWheBRxnjMArDpli9xApCKkldMhqG83h8\
+++xB3v9pcOy8QOOWAOBa5xTnoiASY4oB0OkEug1SxPKBBJpVRWAQyfSP1BzVw0XP+pYKMVU1bDxzq\
++NAV+kwrtuSMp+La5K3OFC6RtVvugYcu2j3PeLXSi2NRBW5SZWIFCtRooYjXgxgoVEMrUccx7TtLW\
++giHcUqDIjcVAZU6RzFIBpjoqpWbVLs5ZjP1FwVstI1wSzCFyLNukUm0oqSpEwc3iI8CwAqIt6EO7\
++KGTYOkGfbuCURQI2J+e6EVaw3xaQ6z6QmjtlusHWZvcDxbLtyaXkNncrcjwfspQMDon1Vhso0J9T\
++m5BpRNtGImyNPIWpFeAGfGYtXGSGFVm2eG1AKXnURA2ifi9ig5vB0ebKLAbXh2MTxGV0jdAmKvq9\
++wIFBUfV7Z4nafK1wAwDhiictklnGJab7anRrZaOwkctuE9A3vfoV4/2h2avQTY1hEZqiRI1XrYHA\
++7XlLR8RSjKhiruMtMSyBrNzjFCnggHXd4ybTO0E7YCldfR/Yd3TfIV7SyNMvJAU+8huReo6zv9+u\
++3Yvgf/rf+/DZ9/4B2pvQtA==
++compile_options=\
++@eNq1Ul1vgjAUfe+vaPpqqiYzS0aGCWDn2IA2fCS6F4KsaDelpoDL/PWrOOd4cg+zL21z7r3nnnNv\
++IEu8yd55IdYcym0tZFkZoKqVyOtUNeWrUOmOK1F8mqiUCOh3pWNMNOzfDUcIAIf6zIBo0FRqsBDl\
++YNnrwc7Bm9sRxDnE8lS/LyGeRIw4+gomxE6mh79veV7qE5+G8284tZKYplHCWEiiKKWMBD7TBZcQ\
++0xtdN1P5yiyzWuw4xEUpcVNWWcE1UK/wgWsj9lnLeIRrxTleS7nFO57XUom9zvs4N3ok9ZjuF95X\
++slE5HyPgGNCZzcwLCk9x1H6iLDZRRzAC2iKHJQ+eNY001hXfojYJnMf0HPBHNxCgBtSEru++EJ34\
++v9a0nZFZHFopo2Fs2a7nxvOTgNYpBDw3eL68AMfXlSYH7+XiTQPVuMP74z+E7Xi8yeUpXtfOtgma\
++HPbj13J8AVxyCuM=
++exehash=d2176ca4cb28b756bca31cd68ce3bc080053f51af888d4cabed39a2bab9c5c5f
++
