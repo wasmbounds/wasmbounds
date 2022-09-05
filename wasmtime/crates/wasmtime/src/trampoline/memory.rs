@@ -42,6 +42,10 @@ impl RuntimeLinearMemory for LinearMemoryProxy {
         self.mem.grow_to(new_size)
     }
 
+    fn shrink_to(&mut self, new_size: usize) -> Result<()> {
+        self.mem.shrink_to(new_size)
+    }
+
     fn vmmemory(&self) -> VMMemoryDefinition {
         VMMemoryDefinition {
             base: self.mem.as_ptr(),

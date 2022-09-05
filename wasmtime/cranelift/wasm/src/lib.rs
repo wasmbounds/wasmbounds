@@ -35,6 +35,7 @@ extern crate alloc as std;
 #[macro_use]
 extern crate std;
 
+use core::ops::Bound;
 #[cfg(not(feature = "std"))]
 use hashbrown::{
     hash_map,

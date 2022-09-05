@@ -128,7 +128,7 @@ impl Config {
             module_version: ModuleVersionStrategy::default(),
             parallel_compilation: true,
             // Default to paged memory initialization when using uffd on linux
-            paged_memory_initialization: cfg!(all(target_os = "linux", feature = "uffd")),
+            paged_memory_initialization: false,
         };
         #[cfg(compiler)]
         {

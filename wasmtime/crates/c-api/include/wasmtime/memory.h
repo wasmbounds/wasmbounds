@@ -116,6 +116,25 @@ WASM_API_EXTERN wasmtime_error_t *wasmtime_memory_grow(
     uint64_t *prev_size
 );
 
+/**
+ * \brief Attempts to shrink the specified memory by `delta` pages.
+ *
+ * \param store the store that owns `memory`
+ * \param memory the memory to shrink
+ * \param delta the number of pages to shrink by
+ * \param prev_size where to store the previous size of memory
+ *
+ * If memory cannot be shrunk then `prev_size` is left unchanged and an error is
+ * returned. Otherwise `prev_size` is set to the previous size of the memory, in
+ * WebAssembly pages, and `NULL` is returned.
+ */
+WASM_API_EXTERN wasmtime_error_t *wasmtime_memory_shrink(
+    wasmtime_context_t *store,
+    const wasmtime_memory_t *memory,
+    uint64_t delta,
+    uint64_t *prev_size
+);
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif

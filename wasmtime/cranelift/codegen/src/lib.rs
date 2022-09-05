@@ -117,3 +117,33 @@ mod souper_harvest;
 pub use crate::result::{CodegenError, CodegenResult};
 
 include!(concat!(env!("OUT_DIR"), "/version.rs"));
+
+/// Bounds checking mechanism
+#[repr(i32)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum BoundsTranslationMode {
+    ///
+    ProtectedMemory = 0,
+    ///
+    None = 1,
+    ///
+    Clamp = 2,
+    ///
+    Trap = 3,
+}
+
+static BOUNDS_TRANSLATION_MODE: core::sync::atomic::AtomicI32 =
+    core::sync::atomic::AtomicI32::new(0);
+
+/// Get bounds checking mode
+pub fn get_bounds_translation_mode() -> BoundsTranslationMode {
+    unsafe {
+        core::mem::transmute(BOUNDS_TRANSLATION_MODE.load(core::sync::atomic::Ordering::Acquire))
+    }
+}
+
+/// Sets bounds checking translation mode for all future compilations
+#[no_mangle]
+pub extern "C" fn set_wasmtime_bounds_translation_mode(mode: i32) {
+    BOUNDS_TRANSLATION_MODE.store(mode, core::sync::atomic::Ordering::Release)
+}

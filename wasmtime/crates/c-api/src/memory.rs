@@ -127,3 +127,13 @@ pub extern "C" fn wasmtime_memory_grow(
 ) -> Option<Box<wasmtime_error_t>> {
     handle_result(mem.grow(store, delta), |prev| *prev_size = prev)
 }
+
+#[no_mangle]
+pub extern "C" fn wasmtime_memory_shrink(
+    store: CStoreContextMut<'_>,
+    mem: &Memory,
+    delta: u64,
+    prev_size: &mut u64,
+) -> Option<Box<wasmtime_error_t>> {
+    handle_result(mem.shrink(store, delta), |prev| *prev_size = prev)
+}

@@ -509,6 +509,22 @@ impl Memory {
         }
     }
 
+    /// Shrink memory
+    pub fn shrink(&self, mut store: impl AsContextMut, delta: u64) -> Result<u64> {
+        let store = store.as_context_mut().0;
+        let mem = self.wasmtime_memory(store);
+        unsafe {
+            match (*mem).shrink(delta, store)? {
+                Some(size) => {
+                    let vm = (*mem).vmmemory();
+                    *store[self.0].definition = vm;
+                    Ok(u64::try_from(size).unwrap() / u64::from(wasmtime_environ::WASM_PAGE_SIZE))
+                }
+                None => bail!("failed to shrink memory by `{}`", delta),
+            }
+        }
+    }
+
     #[cfg_attr(nightlydoc, doc(cfg(feature = "async")))]
     /// Async variant of [`Memory::grow`]. Required when using a
     /// [`ResourceLimiterAsync`](`crate::ResourceLimiterAsync`).
@@ -597,6 +613,13 @@ pub unsafe trait LinearMemory: Send + Sync + 'static {
     /// of bytes. The error may be downcastable to `std::io::Error`.
     /// Returns `Ok` if memory was grown successfully.
     fn grow_to(&mut self, new_size: usize) -> Result<()>;
+
+    /// Shrinks this memory to have the `new_size`, in bytes, specified.
+    ///
+    /// Returns `Err` if memory can't be grown by the specified amount
+    /// of bytes. The error may be downcastable to `std::io::Error`.
+    /// Returns `Ok` if memory was grown successfully.
+    fn shrink_to(&mut self, new_size: usize) -> Result<()>;
 
     /// Return the allocated memory as a mutable pointer to u8.
     fn as_ptr(&self) -> *mut u8;

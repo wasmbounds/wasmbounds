@@ -4,6 +4,7 @@
 
 use crate::mmap::Mmap;
 use crate::vmcontext::VMMemoryDefinition;
+use crate::wasmbounds_hooks::WasmboundsResizableRegion;
 use crate::MemFdSlot;
 use crate::MemoryMemFd;
 use crate::Store;
@@ -66,6 +67,12 @@ pub trait RuntimeLinearMemory: Send + Sync {
     /// of bytes.
     fn grow_to(&mut self, size: usize) -> Result<()>;
 
+    /// Shrink memory to the specified amount of bytes.
+    ///
+    /// Returns an error if memory can't be grown by the specified amount
+    /// of bytes.
+    fn shrink_to(&mut self, new_size: usize) -> Result<()>;
+
     /// Return a `VMMemoryDefinition` for exposing the memory to compiled wasm
     /// code.
     fn vmmemory(&self) -> VMMemoryDefinition;
@@ -80,7 +87,8 @@ pub trait RuntimeLinearMemory: Send + Sync {
 #[derive(Debug)]
 pub struct MmapMemory {
     // The underlying allocation.
-    mmap: Mmap,
+    //mmap: Mmap,
+    region: WasmboundsResizableRegion,
 
     // The number of bytes that are accessible in `mmap` and available for
     // reading and writing.
@@ -126,7 +134,7 @@ impl MmapMemory {
         let offset_guard_bytes = usize::try_from(plan.offset_guard_size).unwrap();
         let pre_guard_bytes = usize::try_from(plan.pre_guard_size).unwrap();
 
-        let (alloc_bytes, extra_to_reserve_on_growth) = match plan.style {
+        /*let (alloc_bytes, extra_to_reserve_on_growth) = match plan.style {
             // Dynamic memories start with the minimum size plus the `reserve`
             // amount specified to grow into.
             MemoryStyle::Dynamic { reserve } => (minimum, usize::try_from(reserve).unwrap()),
@@ -143,40 +151,46 @@ impl MmapMemory {
                 maximum = Some(bound_bytes.min(maximum.unwrap_or(usize::MAX)));
                 (bound_bytes, 0)
             }
-        };
+        };*/
+        let (alloc_bytes, extra_to_reserve_on_growth) =
+            ((WASM32_MAX_PAGES * WASM_PAGE_SIZE_U64) as usize, 0);
+        maximum = Some(alloc_bytes);
         let request_bytes = pre_guard_bytes
             .checked_add(alloc_bytes)
             .and_then(|i| i.checked_add(extra_to_reserve_on_growth))
             .and_then(|i| i.checked_add(offset_guard_bytes))
             .ok_or_else(|| format_err!("cannot allocate {} with guard regions", minimum))?;
 
-        let mut mmap = Mmap::accessible_reserved(0, request_bytes)?;
-        if minimum > 0 {
-            mmap.make_accessible(pre_guard_bytes, minimum)?;
-        }
+        // let mut mmap = Mmap::accessible_reserved(0, request_bytes)?;
+        // if minimum > 0 {
+        //     mmap.make_accessible(pre_guard_bytes, minimum)?;
+        // }
+        let mut region =
+            WasmboundsResizableRegion::new(minimum + pre_guard_bytes, request_bytes, 12);
 
         // If a memfd image was specified, try to create the MemFdSlot on top of our mmap.
         let memfd = match memfd_image {
             Some(image) => {
-                let base = unsafe { mmap.as_mut_ptr().add(pre_guard_bytes) };
-                let mut memfd_slot = MemFdSlot::create(
-                    base.cast(),
-                    minimum,
-                    alloc_bytes + extra_to_reserve_on_growth,
-                );
-                memfd_slot.instantiate(minimum, Some(image))?;
-                // On drop, we will unmap our mmap'd range that this
-                // memfd_slot was mapped on top of, so there is no
-                // need for the memfd_slot to wipe it with an
-                // anonymous mapping first.
-                memfd_slot.no_clear_on_drop();
-                Some(memfd_slot)
+                panic!("Memfd unsupported in wasmbounds benchmark configuration")
+                // let base = unsafe { mmap.as_mut_ptr().add(pre_guard_bytes) };
+                // let mut memfd_slot = MemFdSlot::create(
+                //     base.cast(),
+                //     minimum,
+                //     alloc_bytes + extra_to_reserve_on_growth,
+                // );
+                // memfd_slot.instantiate(minimum, Some(image))?;
+                // // On drop, we will unmap our mmap'd range that this
+                // // memfd_slot was mapped on top of, so there is no
+                // // need for the memfd_slot to wipe it with an
+                // // anonymous mapping first.
+                // memfd_slot.no_clear_on_drop();
+                // Some(memfd_slot)
             }
             None => None,
         };
 
         Ok(Self {
-            mmap,
+            region,
             accessible: minimum,
             maximum,
             pre_guard_size: pre_guard_bytes,
@@ -197,34 +211,36 @@ impl RuntimeLinearMemory for MmapMemory {
     }
 
     fn grow_to(&mut self, new_size: usize) -> Result<()> {
-        if new_size > self.mmap.len() - self.offset_guard_size - self.pre_guard_size {
-            // If the new size of this heap exceeds the current size of the
-            // allocation we have, then this must be a dynamic heap. Use
-            // `new_size` to calculate a new size of an allocation, allocate it,
-            // and then copy over the memory from before.
-            let request_bytes = self
-                .pre_guard_size
-                .checked_add(new_size)
-                .and_then(|s| s.checked_add(self.extra_to_reserve_on_growth))
-                .and_then(|s| s.checked_add(self.offset_guard_size))
-                .ok_or_else(|| format_err!("overflow calculating size of memory allocation"))?;
+        if new_size > self.region.capacity() - self.offset_guard_size - self.pre_guard_size {
+            panic!("Exceeding region capacity");
+            // // If the new size of this heap exceeds the current size of the
+            // // allocation we have, then this must be a dynamic heap. Use
+            // // `new_size` to calculate a new size of an allocation, allocate it,
+            // // and then copy over the memory from before.
+            // let request_bytes = self
+            //     .pre_guard_size
+            //     .checked_add(new_size)
+            //     .and_then(|s| s.checked_add(self.extra_to_reserve_on_growth))
+            //     .and_then(|s| s.checked_add(self.offset_guard_size))
+            //     .ok_or_else(|| format_err!("overflow calculating size of memory allocation"))?;
 
-            let mut new_mmap = Mmap::accessible_reserved(0, request_bytes)?;
-            new_mmap.make_accessible(self.pre_guard_size, new_size)?;
+            // let mut new_mmap = Mmap::accessible_reserved(0, request_bytes)?;
+            // new_mmap.make_accessible(self.pre_guard_size, new_size)?;
 
-            new_mmap.as_mut_slice()[self.pre_guard_size..][..self.accessible]
-                .copy_from_slice(&self.mmap.as_slice()[self.pre_guard_size..][..self.accessible]);
+            // new_mmap.as_mut_slice()[self.pre_guard_size..][..self.accessible]
+            //     .copy_from_slice(&self.mmap.as_slice()[self.pre_guard_size..][..self.accessible]);
 
-            // Now drop the MemFdSlot, if any. We've lost the CoW
-            // advantages by explicitly copying all data, but we have
-            // preserved all of its content; so we no longer need the
-            // memfd mapping. We need to do this before we
-            // (implicitly) drop the `mmap` field by overwriting it
-            // below.
-            let _ = self.memfd.take();
+            // // Now drop the MemFdSlot, if any. We've lost the CoW
+            // // advantages by explicitly copying all data, but we have
+            // // preserved all of its content; so we no longer need the
+            // // memfd mapping. We need to do this before we
+            // // (implicitly) drop the `mmap` field by overwriting it
+            // // below.
+            // let _ = self.memfd.take();
 
-            self.mmap = new_mmap;
+            // self.mmap = new_mmap;
         } else if let Some(memfd) = self.memfd.as_mut() {
+            panic!("Memfd not supported in wasmbounds benchmarks");
             // MemFdSlot has its own growth mechanisms; defer to its
             // implementation.
             memfd.set_heap_limit(new_size)?;
@@ -236,10 +252,11 @@ impl RuntimeLinearMemory for MmapMemory {
             // initial allocation to grow into before the heap is moved in
             // memory.
             assert!(new_size > self.accessible);
-            self.mmap.make_accessible(
-                self.pre_guard_size + self.accessible,
-                new_size - self.accessible,
-            )?;
+            // self.mmap.make_accessible(
+            //     self.pre_guard_size + self.accessible,
+            //     new_size - self.accessible,
+            // )?;
+            self.region.resize(self.pre_guard_size + new_size);
         }
 
         self.accessible = new_size;
@@ -247,9 +264,16 @@ impl RuntimeLinearMemory for MmapMemory {
         Ok(())
     }
 
+    fn shrink_to(&mut self, new_size: usize) -> Result<()> {
+        assert!(new_size < self.accessible);
+        self.region.resize(self.pre_guard_size + new_size);
+        self.accessible = new_size;
+        Ok(())
+    }
+
     fn vmmemory(&self) -> VMMemoryDefinition {
         VMMemoryDefinition {
-            base: unsafe { self.mmap.as_mut_ptr().add(self.pre_guard_size) },
+            base: unsafe { self.region.as_mut_ptr().add(self.pre_guard_size) },
             current_length: self.accessible,
         }
     }
@@ -318,6 +342,7 @@ impl Memory {
         memfd_slot: Option<MemFdSlot>,
         store: &mut dyn Store,
     ) -> Result<Self> {
+        panic!("Static memory unsupported in wasmbounds configuration");
         let (minimum, maximum) = Self::limit_new(plan, store)?;
 
         let base = match maximum {
@@ -584,6 +609,106 @@ impl Memory {
             }
             Memory::Dynamic(mem) => {
                 if let Err(e) = mem.grow_to(new_byte_size) {
+                    store.memory_grow_failed(&e);
+                    return Ok(None);
+                }
+            }
+        }
+        Ok(Some(old_byte_size))
+    }
+
+    /// Shrink memory
+    /// # Safety
+    /// Same as grow
+    pub unsafe fn shrink(
+        &mut self,
+        delta_pages: u64,
+        store: &mut dyn Store,
+    ) -> Result<Option<usize>, Error> {
+        let old_byte_size = self.byte_size();
+        // Wasm spec: when growing by 0 pages, always return the current size.
+        if delta_pages == 0 {
+            return Ok(Some(old_byte_size));
+        }
+
+        // calculate byte size of the new allocation. Let it overflow up to
+        // usize::MAX, then clamp it down to absolute_max.
+        let shrink_bytes = usize::try_from(delta_pages)
+            .unwrap_or(usize::MAX)
+            .saturating_mul(WASM_PAGE_SIZE);
+        let new_byte_size = old_byte_size.saturating_sub(shrink_bytes);
+
+        // let maximum = self.maximum_byte_size();
+        // Store limiter gets first chance to reject memory_growing.
+        // if !store.memory_growing(old_byte_size, new_byte_size, maximum)? {
+        //     return Ok(None);
+        // }
+
+        // Never exceed maximum, even if limiter permitted it.
+        // if let Some(max) = maximum {
+        //     if new_byte_size > max {
+        //         store.memory_grow_failed(&format_err!("Memory maximum size exceeded"));
+        //         return Ok(None);
+        //     }
+        // }
+
+        // #[cfg(all(feature = "uffd", target_os = "linux"))]
+        // {
+        //     if self.is_static() {
+        //         // Reset any faulted guard pages before growing the memory.
+        //         if let Err(e) = self.reset_guard_pages() {
+        //             store.memory_grow_failed(&e);
+        //             return Ok(None);
+        //         }
+        //     }
+        // }
+
+        match self {
+            Memory::Static {
+                base,
+                size,
+                memfd_slot: Some(ref mut memfd_slot),
+                ..
+            } => {
+                // Never exceed static memory size
+                if new_byte_size > base.len() {
+                    store.memory_grow_failed(&format_err!("static memory size exceeded"));
+                    return Ok(None);
+                }
+
+                if let Err(e) = memfd_slot.set_heap_limit(new_byte_size) {
+                    store.memory_grow_failed(&e);
+                    return Ok(None);
+                }
+                *size = new_byte_size;
+            }
+            Memory::Static {
+                base,
+                size,
+                make_accessible,
+                ..
+            } => {
+                let make_accessible = make_accessible
+                    .expect("make_accessible must be Some if this is not a MemFD memory");
+
+                // Never exceed static memory size
+                if new_byte_size > base.len() {
+                    store.memory_grow_failed(&format_err!("static memory size exceeded"));
+                    return Ok(None);
+                }
+
+                // Operating system can fail to make memory accessible
+                if let Err(e) = make_accessible(
+                    base.as_mut_ptr().add(old_byte_size),
+                    new_byte_size - old_byte_size,
+                ) {
+                    store.memory_grow_failed(&e);
+                    return Ok(None);
+                }
+                *size = new_byte_size;
+            }
+            Memory::Dynamic(mem) => {
+                if let Err(e) = mem.shrink_to(new_byte_size) {
                     store.memory_grow_failed(&e);
                     return Ok(None);
                 }

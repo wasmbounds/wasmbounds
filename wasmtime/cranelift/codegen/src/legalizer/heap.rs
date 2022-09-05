@@ -59,8 +59,10 @@ fn dynamic_addr(
     let mut pos = FuncCursor::new(func).at_inst(inst);
     pos.use_srcloc(inst);
 
-    let offset = cast_offset_to_pointer_ty(offset, offset_ty, addr_ty, &mut pos);
+    let mut offset = cast_offset_to_pointer_ty(offset, offset_ty, addr_ty, &mut pos);
 
+    use crate::BoundsTranslationMode;
+    let bmode = crate::get_bounds_translation_mode();
     // Start with the bounds check. Trap if `offset + access_size > bound`.
     let bound = pos.ins().global_value(addr_ty, bound_gv);
     let (cc, lhs, bound) = if access_size == 1 {
@@ -75,15 +77,27 @@ fn dynamic_addr(
         // We need an overflow check for the adjusted offset.
         let access_size_val = pos.ins().iconst(addr_ty, access_size as i64);
         let (adj_offset, overflow) = pos.ins().iadd_ifcout(offset, access_size_val);
-        pos.ins().trapif(
-            isa.unsigned_add_overflow_condition(),
-            overflow,
-            ir::TrapCode::HeapOutOfBounds,
-        );
+        if bmode != BoundsTranslationMode::None {
+            pos.ins().trapif(
+                isa.unsigned_add_overflow_condition(),
+                overflow,
+                ir::TrapCode::HeapOutOfBounds,
+            );
+        }
         (IntCC::UnsignedGreaterThan, adj_offset, bound)
     };
-    let oob = pos.ins().icmp(cc, lhs, bound);
-    pos.ins().trapnz(oob, ir::TrapCode::HeapOutOfBounds);
+    match bmode {
+        BoundsTranslationMode::None => {}
+        BoundsTranslationMode::Clamp => {
+            let oob = pos.ins().icmp(cc, lhs, bound);
+            offset = pos.ins().select(oob, bound, lhs);
+        }
+        BoundsTranslationMode::Trap => {
+            let oob = pos.ins().icmp(cc, lhs, bound);
+            pos.ins().trapnz(oob, ir::TrapCode::HeapOutOfBounds);
+        }
+        BoundsTranslationMode::ProtectedMemory => {}
+    }
 
     let spectre_oob_comparison = if isa.flags().enable_heap_access_spectre_mitigation() {
         Some((cc, lhs, bound))
@@ -117,6 +131,9 @@ fn static_addr(
     let addr_ty = func.dfg.value_type(func.dfg.first_result(inst));
     let mut pos = FuncCursor::new(func).at_inst(inst);
     pos.use_srcloc(inst);
+
+    use crate::BoundsTranslationMode;
+    let bmode = crate::get_bounds_translation_mode();
 
     // The goal here is to trap if `offset + access_size > bound`.
     //
@@ -172,8 +189,19 @@ fn static_addr(
             let limit = limit as i64;
             (IntCC::UnsignedGreaterThan, offset, limit)
         };
-        let oob = pos.ins().icmp_imm(cc, lhs, limit_imm);
-        pos.ins().trapnz(oob, ir::TrapCode::HeapOutOfBounds);
+        match bmode {
+            BoundsTranslationMode::None => {}
+            BoundsTranslationMode::Clamp => {
+                let oob = pos.ins().icmp_imm(cc, lhs, limit_imm);
+                let limit_v = pos.ins().iconst(addr_ty, limit_imm);
+                offset = pos.ins().select(oob, limit_v, lhs);
+            }
+            BoundsTranslationMode::Trap => {
+                let oob = pos.ins().icmp_imm(cc, lhs, limit_imm);
+                pos.ins().trapnz(oob, ir::TrapCode::HeapOutOfBounds);
+            }
+            BoundsTranslationMode::ProtectedMemory => {}
+        }
         if isa.flags().enable_heap_access_spectre_mitigation() {
             let limit = pos.ins().iconst(addr_ty, limit_imm);
             spectre_oob_comparison = Some((cc, lhs, limit));

@@ -417,6 +417,40 @@ impl Instance {
         result
     }
 
+    /// Shrink memory by the specified amount of pages.
+    ///
+    /// Returns `None` if memory can't be shrunk by the specified amount
+    /// of pages. Returns `Some` with the old size in bytes if shrinkage was
+    /// successful.
+    pub(crate) fn memory_shrink(
+        &mut self,
+        index: MemoryIndex,
+        delta: u64,
+    ) -> Result<Option<usize>, Error> {
+        let (idx, instance) = if let Some(idx) = self.module.defined_memory_index(index) {
+            (idx, self)
+        } else {
+            let import = self.imported_memory(index);
+            unsafe {
+                let foreign_instance = (*import.vmctx).instance_mut();
+                let foreign_memory_def = &*import.from;
+                let foreign_memory_index = foreign_instance.memory_index(foreign_memory_def);
+                (foreign_memory_index, foreign_instance)
+            }
+        };
+        let store = unsafe { &mut *instance.store() };
+        let memory = &mut instance.memories[idx];
+
+        let result = unsafe { memory.shrink(delta, store) };
+        let vmmemory = memory.vmmemory();
+
+        // Update the state used by wasm code in case the base pointer and/or
+        // the length changed.
+        instance.set_memory(idx, vmmemory);
+
+        result
+    }
+
     pub(crate) fn table_element_type(&mut self, table_index: TableIndex) -> TableElementType {
         unsafe { (*self.get_table(table_index)).element_type() }
     }

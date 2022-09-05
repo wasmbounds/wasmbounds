@@ -35,6 +35,7 @@ mod mmap;
 mod table;
 mod traphandlers;
 mod vmcontext;
+pub mod wasmbounds_hooks;
 
 pub mod debug_builtins;
 pub mod libcalls;
@@ -67,14 +68,14 @@ pub use crate::vmcontext::{
 mod module_id;
 pub use module_id::{CompiledModuleId, CompiledModuleIdAllocator};
 
-#[cfg(memfd)]
-mod memfd;
-#[cfg(memfd)]
-pub use crate::memfd::{MemFdSlot, MemoryMemFd, ModuleMemFds};
+// #[cfg(memfd)]
+// mod memfd;
+// #[cfg(memfd)]
+// pub use crate::memfd::{MemFdSlot, MemoryMemFd, ModuleMemFds};
 
-#[cfg(not(memfd))]
+// #[cfg(not(memfd))]
 mod memfd_disabled;
-#[cfg(not(memfd))]
+// #[cfg(not(memfd))]
 pub use crate::memfd_disabled::{MemFdSlot, MemoryMemFd, ModuleMemFds};
 
 /// Version number of this crate.
