@@ -3,6 +3,7 @@
 #include <inttypes.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <stdexcept>
 #include "WAVM/Platform/Defines.h"
 
 namespace WAVM {

@@ -333,6 +333,7 @@ static bool isRuntimeException(const Platform::Signal& signal)
 			   || isAddressOwnedByMemory(badPointer, memory, memoryAddress);
 	}
 	case Platform::Signal::Type::stackOverflow:
+	case Platform::Signal::Type::timeout:
 	case Platform::Signal::Type::intDivideByZeroOrOverflow: return true;
 
 	case Platform::Signal::Type::invalid:
@@ -381,6 +382,10 @@ static void translateSignalToRuntimeException(const Platform::Signal& signal,
 	case Platform::Signal::Type::intDivideByZeroOrOverflow:
 		outException = createException(
 			ExceptionTypes::integerDivideByZeroOrOverflow, nullptr, 0, std::move(callStack));
+		break;
+	case Platform::Signal::Type::timeout:
+		outException = createException(
+			ExceptionTypes::timeout, nullptr, 0, std::move(callStack));
 		break;
 
 	case Platform::Signal::Type::invalid:

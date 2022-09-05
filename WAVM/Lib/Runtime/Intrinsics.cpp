@@ -17,6 +17,10 @@
 #include "WAVM/Platform/RWMutex.h"
 #include "WAVM/Runtime/Runtime.h"
 
+#ifdef WAVM_HAS_TRACY
+#include <Tracy.hpp>
+#endif
+
 namespace WAVM { namespace Intrinsics {
 	struct ModuleImpl
 	{
@@ -50,7 +54,9 @@ Intrinsics::Function::Function(Intrinsics::Module* moduleRef,
 	initializeModule(moduleRef);
 
 	if(moduleRef->impl->functionMap.contains(name))
-	{ Errors::fatalf("Intrinsic function already registered: %s", name); }
+	{
+		Errors::fatalf("Intrinsic function already registered: %s", name);
+	}
 	moduleRef->impl->functionMap.set(name, this);
 }
 
@@ -63,7 +69,9 @@ Intrinsics::Global::Global(Intrinsics::Module* moduleRef,
 	initializeModule(moduleRef);
 
 	if(moduleRef->impl->globalMap.contains(name))
-	{ Errors::fatalf("Intrinsic global already registered: %s", name); }
+	{
+		Errors::fatalf("Intrinsic global already registered: %s", name);
+	}
 	moduleRef->impl->globalMap.set(name, this);
 }
 
@@ -73,7 +81,9 @@ Intrinsics::Table::Table(Intrinsics::Module* moduleRef, const char* inName, cons
 	initializeModule(moduleRef);
 
 	if(moduleRef->impl->tableMap.contains(name))
-	{ Errors::fatalf("Intrinsic table already registered: %s", name); }
+	{
+		Errors::fatalf("Intrinsic table already registered: %s", name);
+	}
 	moduleRef->impl->tableMap.set(name, this);
 }
 
@@ -85,7 +95,9 @@ Intrinsics::Memory::Memory(Intrinsics::Module* moduleRef,
 	initializeModule(moduleRef);
 
 	if(moduleRef->impl->memoryMap.contains(name))
-	{ Errors::fatalf("Intrinsic memory already registered: %s", name); }
+	{
+		Errors::fatalf("Intrinsic memory already registered: %s", name);
+	}
 	moduleRef->impl->memoryMap.set(name, this);
 }
 
@@ -94,6 +106,9 @@ Instance* Intrinsics::instantiateModule(
 	const std::initializer_list<const Intrinsics::Module*>& moduleRefs,
 	std::string&& debugName)
 {
+#ifdef WAVM_HAS_TRACY
+	ZoneScopedN("Intrinsics::instantiateModule");
+#endif
 	Timing::Timer timer;
 
 	IR::Module irModule(FeatureLevel::wavm);
@@ -105,6 +120,13 @@ Instance* Intrinsics::instantiateModule(
 	{
 		if(moduleRef->impl)
 		{
+			size_t reserveSize = moduleRef->impl->functionMap.size();
+			functionImportBindings.reserve(reserveSize);
+			irModule.types.reserve(reserveSize);
+			irModule.types.reserve(reserveSize);
+			irModule.functions.imports.reserve(reserveSize);
+			irModule.imports.reserve(reserveSize);
+			names.functions.reserve(reserveSize);
 			for(const auto& pair : moduleRef->impl->functionMap)
 			{
 				functionImportBindings.push_back({pair.value->getNativeFunction()});
@@ -178,6 +200,13 @@ Instance* Intrinsics::instantiateModule(
 		}
 	}
 
+	{
+		size_t reserveSize = irModule.functions.imports.size();
+		irModule.types.reserve(reserveSize);
+		irModule.functions.defs.reserve(reserveSize);
+		names.functions.reserve(reserveSize);
+		irModule.exports.reserve(reserveSize);
+	}
 	// Generate thunks for the intrinsic functions.
 	for(Uptr functionImportIndex = 0; functionImportIndex < irModule.functions.imports.size();
 		++functionImportIndex)
@@ -194,7 +223,9 @@ Instance* Intrinsics::instantiateModule(
 		Serialization::ArrayOutputStream codeStream;
 		OperatorEncoderStream opEncoder(codeStream);
 		for(Uptr paramIndex = 0; paramIndex < intrinsicFunctionType.params().size(); ++paramIndex)
-		{ opEncoder.local_get({paramIndex}); }
+		{
+			opEncoder.local_get({paramIndex});
+		}
 		opEncoder.call({functionImportIndex});
 		opEncoder.end();
 
@@ -205,7 +236,9 @@ Instance* Intrinsics::instantiateModule(
 			{functionImport.exportName, ExternKind::function, wasmFunctionIndex});
 	}
 
-	setDisassemblyNames(irModule, names);
+	{
+		setDisassemblyNames(irModule, names);
+	}
 
 	if(WAVM_ENABLE_ASSERTS)
 	{
@@ -224,7 +257,13 @@ Instance* Intrinsics::instantiateModule(
 		}
 	}
 
-	ModuleRef module = compileModule(irModule);
+	ModuleRef module;
+	{
+#ifdef WAVM_HAS_TRACY
+		ZoneNamedN(_zc, "compileModule", true);
+#endif
+		module = compileModule(irModule);
+	}
 	Instance* instance = instantiateModuleInternal(compartment,
 												   module,
 												   std::move(functionImportBindings),
@@ -248,7 +287,9 @@ HashMap<std::string, Intrinsics::Function*> Intrinsics::getUninstantiatedFunctio
 		if(moduleRef->impl)
 		{
 			for(const auto& pair : moduleRef->impl->functionMap)
-			{ result.addOrFail(pair.key, pair.value); }
+			{
+				result.addOrFail(pair.key, pair.value);
+			}
 		}
 	}
 

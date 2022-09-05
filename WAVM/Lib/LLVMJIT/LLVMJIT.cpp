@@ -187,8 +187,20 @@ std::unique_ptr<llvm::TargetMachine> LLVMJIT::getTargetMachine(const TargetSpec&
 	}
 #endif
 
+	auto cpu = targetSpec.cpu;
+
+	if(triple.getArch() == llvm::Triple::riscv64)
+	{
+		targetAttributes.push_back("+a");
+		targetAttributes.push_back("+c");
+		targetAttributes.push_back("+d");
+		targetAttributes.push_back("+f");
+		targetAttributes.push_back("+m");
+		cpu = "generic-rv64";
+	}
+
 	return std::unique_ptr<llvm::TargetMachine>(
-		llvm::EngineBuilder().selectTarget(triple, "", targetSpec.cpu, targetAttributes));
+		llvm::EngineBuilder().selectTarget(triple, "", cpu, targetAttributes));
 }
 
 TargetValidationResult LLVMJIT::validateTargetMachine(
@@ -209,6 +221,10 @@ TargetValidationResult LLVMJIT::validateTargetMachine(
 		if(featureSpec.simd && !targetMachine->getMCSubtargetInfo()->checkFeatures("+neon"))
 		{ return TargetValidationResult::wavmDoesNotSupportSIMDOnArch; }
 
+		return TargetValidationResult::valid;
+	}
+	else if(targetArch == llvm::Triple::riscv64)
+	{
 		return TargetValidationResult::valid;
 	}
 	else

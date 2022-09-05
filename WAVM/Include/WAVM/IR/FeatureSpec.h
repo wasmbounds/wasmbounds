@@ -53,6 +53,15 @@
 
 namespace WAVM { namespace IR {
 
+enum class BoundsCheckingMechanism {
+	none,
+	clamp,
+	trap,
+	mprotect,
+};
+
+extern BoundsCheckingMechanism boundsCheckingMechanism;
+
 #define VISIT_FEATURE(name, ...) name,
 	enum class Feature
 	{

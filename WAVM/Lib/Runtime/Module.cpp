@@ -30,6 +30,16 @@ static std::shared_ptr<ObjectCacheInterface> getGlobalObjectCache()
 	return globalObjectCache;
 }
 
+std::vector<U8> Runtime::precompileModule(const IR::Module& irModule,
+										  const std::string& targetArch,
+										  const std::string& targetCpu)
+{
+	auto targetSpec = LLVMJIT::getHostTargetSpec();
+	if(!targetCpu.empty()) { targetSpec.cpu = targetCpu; }
+	if(!targetArch.empty()) { targetSpec.triple = targetArch + "-unknown-linux-gnu"; }
+	return LLVMJIT::compileModule(irModule, targetSpec);
+}
+
 ModuleRef Runtime::compileModule(const IR::Module& irModule)
 {
 	// Get a pointer to the global object cache, if there is one.

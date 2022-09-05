@@ -5,6 +5,8 @@
 using namespace WAVM;
 using namespace WAVM::IR;
 
+BoundsCheckingMechanism WAVM::IR::boundsCheckingMechanism = BoundsCheckingMechanism::mprotect;
+
 void FeatureSpec::setFeatureLevel(FeatureLevel featureLevel)
 {
 #define SET_FEATURE(name, ...) name = true;

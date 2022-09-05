@@ -3,7 +3,10 @@
 #include "WAVM/Inline/BasicTypes.h"
 #include "WAVM/Platform/Defines.h"
 
+#include <memory>
+
 namespace WAVM { namespace Platform {
+
 	// Describes allowed memory accesses.
 	enum class MemoryAccess
 	{
@@ -13,6 +16,58 @@ namespace WAVM { namespace Platform {
 		readExecute,
 		readWriteExecute
 	};
+
+	struct MemoryOverrideHook
+	{
+		virtual ~MemoryOverrideHook() = default;
+
+		// Allocates virtual addresses without commiting physical pages to them.
+		// Returns the base virtual address of the allocated addresses, or nullptr if the virtual
+		// address space has been exhausted.
+		virtual U8* allocateVirtualPages(Uptr numPages) = 0;
+
+		// Allocates virtual addresses without commiting physical pages to them.
+		// Returns the base virtual address of the allocated addresses, or nullptr if the virtual
+		// address space has been exhausted.
+		virtual U8* allocateAlignedVirtualPages(Uptr numPages,
+												Uptr alignmentLog2,
+												U8*& outUnalignedBaseAddress)
+			= 0;
+
+		// Commits physical memory to the specified virtual pages.
+		// baseVirtualAddress must be a multiple of the preferred page size.
+		// Return true if successful, or false if physical memory has been exhausted.
+		virtual bool commitVirtualPages(U8* baseVirtualAddress,
+										Uptr numPages,
+										MemoryAccess access = MemoryAccess::readWrite)
+			= 0;
+
+		// Changes the allowed access to the specified virtual pages.
+		// baseVirtualAddress must be a multiple of the preferred page size.
+		// Return true if successful, or false if the access-level could not be set.
+		virtual bool setVirtualPageAccess(U8* baseVirtualAddress,
+										  Uptr numPages,
+										  MemoryAccess access)
+			= 0;
+
+		// Decommits the physical memory that was committed to the specified virtual pages.
+		// baseVirtualAddress must be a multiple of the preferred page size.
+		virtual void decommitVirtualPages(U8* baseVirtualAddress, Uptr numPages) = 0;
+
+		// Frees virtual addresses. baseVirtualAddress must also be the address returned by
+		// allocateVirtualPages.
+		virtual void freeVirtualPages(U8* baseVirtualAddress, Uptr numPages) = 0;
+
+		// Frees an aligned virtual address block. unalignedBaseAddress must be the unaligned base
+		// address returned in the outUnalignedBaseAddress parameter of a call to
+		// allocateAlignedVirtualPages.
+		virtual void freeAlignedVirtualPages(U8* unalignedBaseAddress,
+											 Uptr numPages,
+											 Uptr alignmentLog2)
+			= 0;
+	};
+
+	WAVM_API void installMemoryOverrideHook(std::unique_ptr<MemoryOverrideHook> hook);
 
 	// Returns the base 2 logarithm of the number of bytes in the smallest virtual page.
 	WAVM_API Uptr getBytesPerPageLog2();

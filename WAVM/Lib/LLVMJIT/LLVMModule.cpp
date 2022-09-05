@@ -83,6 +83,14 @@ struct LLVMJIT::GlobalModuleState
 	~GlobalModuleState() { delete gdbRegistrationListener; }
 };
 
+#ifdef WAVM_PERF_EVENTS
+static llvm::JITEventListener* perfRegistrationListener = nullptr;
+#endif
+
+// A map from address to loaded JIT symbols.
+static Platform::Mutex addressToModuleMapMutex;
+static std::map<Uptr, LLVMJIT::Module*> addressToModuleMap;
+
 // Allocates memory for the LLVM object loader.
 struct LLVMJIT::ModuleMemoryManager : llvm::RTDyldMemoryManager
 {
@@ -523,6 +531,14 @@ Module::Module(const std::vector<U8>& objectBytes,
 #else
 		globalModuleState->gdbRegistrationListener->NotifyObjectEmitted(*object, *loadedObject);
 #endif
+
+#ifdef WAVM_PERF_EVENTS
+        if(!perfRegistrationListener) {
+            perfRegistrationListener = llvm::JITEventListener::createPerfJITEventListener();
+        }
+
+        perfRegistrationListener->notifyObjectLoaded(reinterpret_cast<Uptr>(this), *object, *loadedObject);
+#endif
 	}
 
 	// Create a DWARF context to interpret the debug information in this compilation unit.
@@ -628,6 +644,10 @@ Module::~Module()
 			reinterpret_cast<Uptr>(this));
 #else
 		globalModuleState->gdbRegistrationListener->NotifyFreeingObject(*object);
+#endif
+
+#ifdef WAVM_PERF_EVENTS
+    perfRegistrationListener->notifyFreeingObject(reinterpret_cast<Uptr>(this));
 #endif
 	}
 
@@ -760,15 +780,15 @@ std::shared_ptr<LLVMJIT::Module> LLVMJIT::loadModule(
 #if !USE_WINDOWS_SEH
 	// Use __cxxabiv1::__cxa_current_exception_type to get a reference to the std::type_info for
 	// Runtime::Exception* without enabling RTTI.
-	std::type_info* runtimeExceptionPointerTypeInfo = nullptr;
-	try
+	const std::type_info* runtimeExceptionPointerTypeInfo = &typeid(Runtime::Exception*);
+	/*try
 	{
 		throw(Runtime::Exception*) nullptr;
 	}
 	catch(Runtime::Exception*)
 	{
 		runtimeExceptionPointerTypeInfo = __cxxabiv1::__cxa_current_exception_type();
-	}
+	}*/
 
 	// Bind the std::type_info for Runtime::Exception.
 	importedSymbolMap.addOrFail("runtimeExceptionTypeInfo",

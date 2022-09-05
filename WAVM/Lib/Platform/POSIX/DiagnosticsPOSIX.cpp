@@ -70,20 +70,19 @@ bool Platform::getInstructionSourceByAddress(Uptr ip, InstructionSource& outSour
 		}
 		else
 		{
+			char demangledBuffer[1024];
+			const char* demangledSymbolName = symbolInfo.dli_sname;
 			if(symbolInfo.dli_sname[0] == '_')
 			{
-				int demangleStatus = 0;
-				if(char* demangledBuffer
-				   = abi::__cxa_demangle(symbolInfo.dli_sname, nullptr, nullptr, &demangleStatus))
-				{
-					outSource.function = demangledBuffer;
-					free(demangledBuffer);
-				}
+				Uptr numDemangledChars = sizeof(demangledBuffer);
+				I32 demangleStatus = 0;
+				if(abi::__cxa_demangle(symbolInfo.dli_sname,
+									   demangledBuffer,
+									   (size_t*)&numDemangledChars,
+									   &demangleStatus))
+				{ demangledSymbolName = demangledBuffer; }
 			}
-			else
-			{
-				outSource.function = symbolInfo.dli_sname;
-			}
+			outSource.function = demangledSymbolName;
 			outSource.instructionOffset = ip - reinterpret_cast<Uptr>(symbolInfo.dli_saddr);
 		}
 		return true;

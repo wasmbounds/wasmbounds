@@ -3,6 +3,7 @@
 #include <string.h>
 #include <algorithm>
 #include <string>
+#include <stdexcept>
 #include <vector>
 #include "WAVM/Inline/Assert.h"
 #include "WAVM/Inline/BasicTypes.h"
@@ -218,6 +219,20 @@ namespace WAVM { namespace Serialization {
 			string.resize(size);
 			memcpy(const_cast<char*>(string.data()), inputBytes, size);
 			string.shrink_to_fit();
+		}
+		else
+		{
+			serializeBytes(stream, (U8*)string.c_str(), size);
+		}
+	}
+
+	template<typename Stream> void serialize(Stream& stream, const std::string& string)
+	{
+		Uptr size = string.size();
+		serializeVarUInt32(stream, size);
+		if(Stream::isInput)
+		{
+			throw std::invalid_argument("Input stream with const string");
 		}
 		else
 		{

@@ -43,6 +43,15 @@ namespace WAVM { namespace Platform {
 		{
 			Uptr data[6];
 		} pthreadCond;
+#elif defined(__linux__) && defined(__riscv) && (__riscv_xlen == 64)
+		struct PthreadMutex
+		{
+			Uptr data[5];
+		} pthreadMutex;
+		struct PthreadCond
+		{
+			Uptr data[6];
+		} pthreadCond;
 #elif defined(__APPLE__)
 		struct PthreadMutex
 		{

@@ -44,7 +44,8 @@ static void maskSignals(int how)
 	sigemptyset(&set);
 	sigaddset(&set, SIGFPE);
 	sigaddset(&set, SIGSEGV);
-	sigaddset(&set, SIGBUS);
+	sigaddset(&set, SIGALRM);
+	// sigaddset(&set, SIGBUS);
 	pthread_sigmask(how, &set, nullptr);
 }
 
@@ -59,7 +60,9 @@ static void maskSignals(int how)
 	{
 	case SIGFPE:
 		if(signalInfo->si_code != FPE_INTDIV && signalInfo->si_code != FPE_INTOVF)
-		{ Errors::fatalfWithCallStack("unknown SIGFPE code"); }
+		{
+			Errors::fatalfWithCallStack("unknown SIGFPE code");
+		}
 		signal.type = Signal::Type::intDivideByZeroOrOverflow;
 		break;
 	case SIGSEGV:
@@ -73,6 +76,10 @@ static void maskSignals(int how)
 						  ? Signal::Type::stackOverflow
 						  : Signal::Type::accessViolation;
 		signal.accessViolation.address = reinterpret_cast<Uptr>(signalInfo->si_addr);
+		break;
+	}
+	case SIGALRM: {
+		signal.type = Signal::Type::timeout;
 		break;
 	}
 	default: Errors::fatalfWithCallStack("unknown signal number: %i", signalNumber); break;
@@ -105,6 +112,7 @@ static void maskSignals(int how)
 	case SIGFPE: Errors::fatalfWithCallStack("unhandled SIGFPE");
 	case SIGSEGV: Errors::fatalfWithCallStack("unhandled SIGSEGV");
 	case SIGBUS: Errors::fatalfWithCallStack("unhandled SIGBUS");
+	case SIGALRM: Errors::fatalfWithCallStack("unhandled SIGALRM");
 	default: WAVM_UNREACHABLE();
 	};
 }
@@ -117,8 +125,9 @@ bool Platform::initGlobalSignalsOnce()
 	signalAction.sa_flags = SA_SIGINFO | SA_ONSTACK | SA_NODEFER;
 	sigemptyset(&signalAction.sa_mask);
 	WAVM_ERROR_UNLESS(!sigaction(SIGSEGV, &signalAction, nullptr));
-	WAVM_ERROR_UNLESS(!sigaction(SIGBUS, &signalAction, nullptr));
+	// WAVM_ERROR_UNLESS(!sigaction(SIGBUS, &signalAction, nullptr));
 	WAVM_ERROR_UNLESS(!sigaction(SIGFPE, &signalAction, nullptr));
+	WAVM_ERROR_UNLESS(!sigaction(SIGALRM, &signalAction, nullptr));
 
 	return true;
 }
@@ -171,8 +180,7 @@ static void visitFDEs(const U8* ehFrames, Uptr numBytes, void (*visitFDE)(const 
 {
 	const U8* next = ehFrames;
 	const U8* end = ehFrames + numBytes;
-	do
-	{
+	do {
 		const U8* cfi = next;
 		Uptr numCFIBytes = *((const U32*)next);
 		next += 4;

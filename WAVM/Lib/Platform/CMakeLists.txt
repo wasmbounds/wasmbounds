@@ -65,12 +65,14 @@ else()
 	endif()
 
 	# futimens/utimensat isn't available on MacOS until 10.13.
-	check_symbol_exists(futimens sys/stat.h HAS_FUTIMENS)
+	#check_symbol_exists(futimens sys/stat.h HAS_FUTIMENS)
+	set(HAS_FUTIMENS ON)
 	if(HAS_FUTIMENS)
 		list(APPEND PLATFORM_PRIVATE_DEFINITIONS "HAS_FUTIMENS")
 	endif()
-	check_symbol_exists(utimensat sys/stat.h HAS_UTIMENSAT)
-	if(HAS_FUTIMENS)
+	#check_symbol_exists(utimensat sys/stat.h HAS_UTIMENSAT)
+	set(HAS_UTIMENSAT ON)
+	if(HAS_UTIMENSAT)
 		list(APPEND PLATFORM_PRIVATE_DEFINITIONS "HAS_UTIMENSAT")
 	endif()
 

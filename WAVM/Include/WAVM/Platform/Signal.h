@@ -12,7 +12,8 @@ namespace WAVM { namespace Platform {
 			invalid = 0,
 			accessViolation,
 			stackOverflow,
-			intDivideByZeroOrOverflow
+			intDivideByZeroOrOverflow,
+			timeout
 		};
 
 		Type type = Type::invalid;

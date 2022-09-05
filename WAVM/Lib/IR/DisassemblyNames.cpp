@@ -43,14 +43,11 @@ static void deserializeNameMap(InputStream& stream,
 		Uptr nameIndex = 0;
 		serializeVarUInt32(stream, nameIndex);
 
-		std::string nameString;
-		serialize(stream, nameString);
-
 		if(nameIndex >= maxNames) { throw FatalSerializationException("out-of-bounds name index"); }
 
 		if(nameIndex >= outNames.size()) { outNames.resize(nameIndex + 1); }
 
-		outNames[nameIndex] = std::move(nameString);
+		serialize(stream, outNames[nameIndex]);
 	}
 }
 
@@ -69,8 +66,7 @@ static void serializeNameMap(OutputStream& stream, const std::vector<std::string
 		{
 			serializeVarUInt32(stream, nameIndex);
 
-			std::string nameString = outNames[nameIndex];
-			serialize(stream, nameString);
+			serialize(stream, outNames[nameIndex]);
 		}
 	}
 }
@@ -84,6 +80,8 @@ static void deserializeNameSubsection(const Module& module,
 
 	U32 numSubsectionBytes = 0;
 	serializeVarUInt32(stream, numSubsectionBytes);
+
+	std::string functionName;
 
 	MemoryInputStream substream(stream.advance(numSubsectionBytes), numSubsectionBytes);
 	switch((NameSubsectionType)subsectionType)
@@ -100,7 +98,6 @@ static void deserializeNameSubsection(const Module& module,
 			U32 functionIndex = 0;
 			serializeVarUInt32(substream, functionIndex);
 
-			std::string functionName;
 			serialize(substream, functionName);
 
 			if(functionIndex < outNames.functions.size())
@@ -239,6 +236,7 @@ static void deserializeNameSubsection(const Module& module,
 void IR::getDisassemblyNames(const Module& module, DisassemblyNames& outNames)
 {
 	// Fill in the output with the correct number of blank names.
+	outNames.functions.reserve(module.functions.imports.size() + module.functions.defs.size());
 	for(const auto& functionImport : module.functions.imports)
 	{
 		DisassemblyNames::Function functionNames;
@@ -250,10 +248,8 @@ void IR::getDisassemblyNames(const Module& module, DisassemblyNames& outNames)
 	{
 		const FunctionDef& functionDef = module.functions.defs[functionDefIndex];
 		DisassemblyNames::Function functionNames;
-		functionNames.locals.insert(functionNames.locals.begin(),
-									module.types[functionDef.type.index].params().size()
-										+ functionDef.nonParameterLocalTypes.size(),
-									"");
+		functionNames.locals.resize(module.types[functionDef.type.index].params().size()
+										+ functionDef.nonParameterLocalTypes.size());
 		outNames.functions.push_back(std::move(functionNames));
 	}
 
@@ -324,8 +320,7 @@ void IR::setDisassemblyNames(Module& module, const DisassemblyNames& names)
 	// Module name
 	serializeNameSubsection(
 		stream, NameSubsectionType::module, [&names](OutputStream& subsectionStream) {
-			std::string moduleName = names.moduleName;
-			serialize(subsectionStream, moduleName);
+			serialize(subsectionStream, names.moduleName);
 		});
 
 	// Function names
@@ -336,8 +331,7 @@ void IR::setDisassemblyNames(Module& module, const DisassemblyNames& names)
 			for(Uptr functionIndex = 0; functionIndex < names.functions.size(); ++functionIndex)
 			{
 				serializeVarUInt32(subsectionStream, functionIndex);
-				std::string functionName = names.functions[functionIndex].name;
-				serialize(subsectionStream, functionName);
+				serialize(subsectionStream, names.functions[functionIndex].name);
 			}
 		});
 

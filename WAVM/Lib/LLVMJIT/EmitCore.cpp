@@ -400,6 +400,11 @@ void EmitFunctionContext::call_indirect(CallIndirectImm imm)
 	auto runtimeFunction = irBuilder.CreateIntToPtr(
 		irBuilder.CreateAdd(biasedValueLoad, moduleContext.tableReferenceBias),
 		llvmContext.i8PtrType);
+
+// 24/04/2019 - Some code in CPython is a bit sloppy in its casting of function pointers, so
+// causes type mismatches at runtime. As a temporary hack I'm removing the type check on
+// call_indirect in the generated code.
+
 	auto elementTypeId = loadFromUntypedPointer(
 		irBuilder.CreateInBoundsGEP(
 			runtimeFunction,

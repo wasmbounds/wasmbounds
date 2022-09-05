@@ -92,6 +92,20 @@ static llvm::Value* getOffsetAndBoundedAddress(EmitFunctionContext& functionCont
 		numBytes = irBuilder.CreateZExt(numBytes, functionContext.moduleContext.iptrType);
 	}
 
+	/// Only do zero-extension when no bounds checking is requested
+	if(boundsCheckingMechanism == BoundsCheckingMechanism::none)
+	{
+		llvm::Constant* offsetConstant
+			= emitLiteralIptr(offset, functionContext.moduleContext.iptrType);
+		if(offset != 0) { address = irBuilder.CreateAdd(address, offsetConstant); }
+		return address;
+	}
+
+	if(boundsCheckingMechanism == BoundsCheckingMechanism::trap)
+	{
+		boundsCheckOp = BoundsCheckOp::trapOnOutOfBounds;
+	}
+
 	// If the offset is greater than the size of the guard region, add it before bounds checking,
 	// and check for overflow.
 	if(offset && offset >= Runtime::memoryNumGuardBytes)
@@ -106,6 +120,7 @@ static llvm::Value* getOffsetAndBoundedAddress(EmitFunctionContext& functionCont
 		}
 		else
 		{
+			throw std::runtime_error("Unsupported !is32bitMemoryOn64bitHost");
 			llvm::Value* addressPlusOffsetAndOverflow
 				= functionContext.callLLVMIntrinsic({functionContext.moduleContext.iptrType},
 													llvm::Intrinsic::uadd_with_overflow,
@@ -145,6 +160,18 @@ static llvm::Value* getOffsetAndBoundedAddress(EmitFunctionContext& functionCont
 			 numBytes,
 			 memoryNumBytes,
 			 emitLiteralIptr(memoryIndex, functionContext.moduleContext.iptrType)});
+	}
+	else if(boundsCheckingMechanism == BoundsCheckingMechanism::clamp)
+	{
+		llvm::Value* memoryNumBytes = getMemoryNumBytes(functionContext, memoryIndex);
+		llvm::Value* memoryNumBytesMinusNumBytes = irBuilder.CreateSub(memoryNumBytes, numBytes);
+		llvm::Value* numBytesWasGreaterThanMemoryNumBytes
+			= irBuilder.CreateICmpUGT(memoryNumBytesMinusNumBytes, memoryNumBytes);
+		address = irBuilder.CreateSelect(
+			irBuilder.CreateOr(numBytesWasGreaterThanMemoryNumBytes,
+							   irBuilder.CreateICmpUGT(address, memoryNumBytesMinusNumBytes)),
+			memoryNumBytesMinusNumBytes,
+			address);
 	}
 	else if(is32bitMemoryOn64bitHost)
 	{

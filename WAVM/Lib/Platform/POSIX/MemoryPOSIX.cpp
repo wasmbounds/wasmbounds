@@ -3,6 +3,7 @@
 #include <sys/mman.h>
 #include <sys/resource.h>
 #include <unistd.h>
+#include <exception>
 #include "POSIXPrivate.h"
 #include "WAVM/Inline/Assert.h"
 #include "WAVM/Inline/BasicTypes.h"
@@ -10,6 +11,10 @@
 #include "WAVM/Platform/Intrinsic.h"
 #include "WAVM/Platform/Memory.h"
 #include "WAVM/Platform/Mutex.h"
+
+#ifdef WAVM_HAS_TRACY
+#include <Tracy.hpp>
+#endif
 
 #ifdef __APPLE__
 #define MAP_ANONYMOUS MAP_ANON
@@ -50,8 +55,22 @@ static bool isPageAligned(U8* address)
 	return (addressBits & (getBytesPerPage() - 1)) == 0;
 }
 
+std::unique_ptr<MemoryOverrideHook> memoryOverrideHook = nullptr;
+
+void Platform::installMemoryOverrideHook(std::unique_ptr<MemoryOverrideHook> hook)
+{
+	if(memoryOverrideHook)
+	{
+		fprintf(stderr, "Trying to double-register memory override hook\n");
+		dumpErrorCallStack(0);
+		std::terminate();
+	}
+	memoryOverrideHook = std::move(hook);
+}
+
 U8* Platform::allocateVirtualPages(Uptr numPages)
 {
+	if(memoryOverrideHook) { return memoryOverrideHook->allocateVirtualPages(numPages); }
 	Uptr numBytes = numPages << getBytesPerPageLog2();
 	void* result = mmap(nullptr, numBytes, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 	if(result == MAP_FAILED)
@@ -67,6 +86,10 @@ U8* Platform::allocateVirtualPages(Uptr numPages)
 		}
 		return nullptr;
 	}
+	madvise(result, numBytes, MADV_HUGEPAGE);
+#ifdef WAVM_HAS_TRACY
+	TracyAllocNS(result, numBytes, 6, "WAVM");
+#endif
 	return (U8*)result;
 }
 
@@ -74,6 +97,11 @@ U8* Platform::allocateAlignedVirtualPages(Uptr numPages,
 										  Uptr alignmentLog2,
 										  U8*& outUnalignedBaseAddress)
 {
+	if(memoryOverrideHook)
+	{
+		return memoryOverrideHook->allocateAlignedVirtualPages(
+			numPages, alignmentLog2, outUnalignedBaseAddress);
+	}
 	const Uptr pageSizeLog2 = getBytesPerPageLog2();
 	const Uptr numBytes = numPages << pageSizeLog2;
 	if(alignmentLog2 > pageSizeLog2)
@@ -105,13 +133,21 @@ U8* Platform::allocateAlignedVirtualPages(Uptr numPages,
 		// middle.
 		const Uptr numHeadPaddingBytes = alignedAddress - address;
 		if(numHeadPaddingBytes > 0)
-		{ WAVM_ERROR_UNLESS(!munmap(unalignedBaseAddress, numHeadPaddingBytes)); }
+		{
+			WAVM_ERROR_UNLESS(!munmap(unalignedBaseAddress, numHeadPaddingBytes));
+		}
 
 		const Uptr numTailPaddingBytes = alignmentBytes - (alignedAddress - address);
 		if(numTailPaddingBytes > 0)
-		{ WAVM_ERROR_UNLESS(!munmap(result + (numPages << pageSizeLog2), numTailPaddingBytes)); }
+		{
+			WAVM_ERROR_UNLESS(!munmap(result + (numPages << pageSizeLog2), numTailPaddingBytes));
+		}
 
 		outUnalignedBaseAddress = result;
+		madvise(result, numBytes, MADV_HUGEPAGE);
+#ifdef WAVM_HAS_TRACY
+		TracyAllocNS(result, numBytes, 6, "WAVM");
+#endif
 		return result;
 	}
 	else
@@ -124,6 +160,10 @@ U8* Platform::allocateAlignedVirtualPages(Uptr numPages,
 bool Platform::commitVirtualPages(U8* baseVirtualAddress, Uptr numPages, MemoryAccess access)
 {
 	WAVM_ERROR_UNLESS(isPageAligned(baseVirtualAddress));
+	if(memoryOverrideHook)
+	{
+		return memoryOverrideHook->commitVirtualPages(baseVirtualAddress, numPages, access);
+	}
 	int result = mprotect(
 		baseVirtualAddress, numPages << getBytesPerPageLog2(), memoryAccessAsPOSIXFlag(access));
 	if(result != 0)
@@ -142,6 +182,10 @@ bool Platform::commitVirtualPages(U8* baseVirtualAddress, Uptr numPages, MemoryA
 bool Platform::setVirtualPageAccess(U8* baseVirtualAddress, Uptr numPages, MemoryAccess access)
 {
 	WAVM_ERROR_UNLESS(isPageAligned(baseVirtualAddress));
+	if(memoryOverrideHook)
+	{
+		return memoryOverrideHook->setVirtualPageAccess(baseVirtualAddress, numPages, access);
+	}
 	int result = mprotect(
 		baseVirtualAddress, numPages << getBytesPerPageLog2(), memoryAccessAsPOSIXFlag(access));
 	if(result != 0)
@@ -160,21 +204,37 @@ bool Platform::setVirtualPageAccess(U8* baseVirtualAddress, Uptr numPages, Memor
 void Platform::decommitVirtualPages(U8* baseVirtualAddress, Uptr numPages)
 {
 	WAVM_ERROR_UNLESS(isPageAligned(baseVirtualAddress));
-	auto numBytes = numPages << getBytesPerPageLog2();
-	if(mmap(baseVirtualAddress, numBytes, PROT_NONE, MAP_FIXED | MAP_PRIVATE | MAP_ANONYMOUS, -1, 0)
-	   == MAP_FAILED)
+	if(memoryOverrideHook)
 	{
-		Errors::fatalf("mmap(0x%" WAVM_PRIxPTR ", %" WAVM_PRIuPTR
-					   ", PROT_NONE, MAP_FIXED | MAP_PRIVATE | MAP_ANONYMOUS, -1, 0) failed: %s",
+		return memoryOverrideHook->decommitVirtualPages(baseVirtualAddress, numPages);
+	}
+	auto numBytes = numPages << getBytesPerPageLog2();
+	if(madvise(baseVirtualAddress, numBytes, MADV_DONTNEED) < 0)
+	{
+		Errors::fatalf("madvise(0x%" WAVM_PRIxPTR ", %" WAVM_PRIuPTR ", MADV_DONTNEED) failed: %s",
 					   reinterpret_cast<Uptr>(baseVirtualAddress),
 					   numBytes,
 					   strerror(errno));
+	}
+	int result = mprotect(baseVirtualAddress, numBytes, PROT_NONE);
+	if(result != 0)
+	{
+		fprintf(stderr,
+				"mprotect(0x%" WAVM_PRIxPTR ", %" WAVM_PRIuPTR ", PROT_NONE) failed: %s\n",
+				reinterpret_cast<Uptr>(baseVirtualAddress),
+				numPages << getBytesPerPageLog2(),
+				strerror(errno));
+		dumpErrorCallStack(0);
 	}
 }
 
 void Platform::freeVirtualPages(U8* baseVirtualAddress, Uptr numPages)
 {
 	WAVM_ERROR_UNLESS(isPageAligned(baseVirtualAddress));
+	if(memoryOverrideHook)
+	{
+		return memoryOverrideHook->freeVirtualPages(baseVirtualAddress, numPages);
+	}
 	if(munmap(baseVirtualAddress, numPages << getBytesPerPageLog2()))
 	{
 		Errors::fatalf("munmap(0x%" WAVM_PRIxPTR ", %u) failed: %s",
@@ -182,11 +242,19 @@ void Platform::freeVirtualPages(U8* baseVirtualAddress, Uptr numPages)
 					   numPages << getBytesPerPageLog2(),
 					   strerror(errno));
 	}
+#ifdef WAVM_HAS_TRACY
+	TracyFreeNS(baseVirtualAddress, 6, "WAVM");
+#endif
 }
 
 void Platform::freeAlignedVirtualPages(U8* unalignedBaseAddress, Uptr numPages, Uptr alignmentLog2)
 {
 	WAVM_ERROR_UNLESS(isPageAligned(unalignedBaseAddress));
+	if(memoryOverrideHook)
+	{
+		return memoryOverrideHook->freeAlignedVirtualPages(
+			unalignedBaseAddress, numPages, alignmentLog2);
+	}
 	if(munmap(unalignedBaseAddress, numPages << getBytesPerPageLog2()))
 	{
 		Errors::fatalf("munmap(0x%" WAVM_PRIxPTR ", %u) failed: %s",
@@ -194,6 +262,9 @@ void Platform::freeAlignedVirtualPages(U8* unalignedBaseAddress, Uptr numPages, 
 					   numPages << getBytesPerPageLog2(),
 					   strerror(errno));
 	}
+#ifdef WAVM_HAS_TRACY
+	TracyFreeNS(unalignedBaseAddress, 6, "WAVM");
+#endif
 }
 
 Uptr Platform::getPeakMemoryUsageBytes()

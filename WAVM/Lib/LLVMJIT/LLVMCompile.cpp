@@ -14,6 +14,10 @@
 #include "WAVM/Logging/Logging.h"
 #include "WAVM/Platform/Defines.h"
 
+#ifdef WAVM_HAS_TRACY
+#include <Tracy.hpp>
+#endif
+
 PUSH_DISABLE_WARNINGS_FOR_LLVM_HEADERS
 #include <llvm-c/Disassembler.h>
 #include <llvm/ADT/SmallVector.h>
@@ -86,6 +90,9 @@ private:
 
 static void optimizeLLVMModule(llvm::Module& llvmModule, bool shouldLogMetrics)
 {
+	#ifdef WAVM_HAS_TRACY
+	ZoneScopedN("optimizeLLVMModule");
+	#endif
 	// Run some optimization on the module's functions.
 	Timing::Timer optimizationTimer;
 
@@ -124,6 +131,9 @@ std::vector<U8> LLVMJIT::compileLLVMModule(LLVMContext& llvmContext,
 										   bool shouldLogMetrics,
 										   llvm::TargetMachine* targetMachine)
 {
+	#ifdef WAVM_HAS_TRACY
+	ZoneScopedN("compileLLVMModule");
+	#endif
 	// Verify the module.
 	if(WAVM_ENABLE_ASSERTS)
 	{
@@ -143,6 +153,9 @@ std::vector<U8> LLVMJIT::compileLLVMModule(LLVMContext& llvmContext,
 	Timing::Timer machineCodeTimer;
 	std::vector<U8> objectBytes;
 	{
+		#ifdef WAVM_HAS_TRACY
+		ZoneNamedN(_zpm, "passManager", true);
+		#endif
 		llvm::legacy::PassManager passManager;
 		llvm::MCContext* mcContext;
 		LLVMArrayOutputStream objectStream;

@@ -1,6 +1,6 @@
 #include <stdint.h>
 #include <string.h>
-#include <algorithm>
+#include <stdexcept>
 #include <vector>
 #include "RuntimePrivate.h"
 #include "WAVM/IR/Types.h"
@@ -108,7 +108,9 @@ static GrowResult growTableImpl(Table* table,
 	{
 		// Check the table element quota.
 		if(table->resourceQuota && !table->resourceQuota->tableElems.allocate(numElementsToGrow))
-		{ return GrowResult::outOfQuota; }
+		{
+			return GrowResult::outOfQuota;
+		}
 
 		Platform::RWMutex::ExclusiveLock resizingLock(table->resizingMutex);
 
@@ -205,9 +207,72 @@ Table* Runtime::createTable(Compartment* compartment,
 	return table;
 }
 
+void Runtime::cloneTableInto(Table* targetTable,
+							 const Table* sourceTable,
+							 Compartment* newCompartment)
+{
+	Platform::RWMutex::ShareableLock resizingLock(sourceTable->resizingMutex);
+
+	// Create the new table.
+	const Uptr numElements = sourceTable->numElements.load(std::memory_order_acquire);
+	if(targetTable->indexType != sourceTable->indexType)
+	{
+		throw std::runtime_error("Mismatched table types when cloning module");
+	}
+	targetTable->debugName = sourceTable->debugName;
+	targetTable->resourceQuota = sourceTable->resourceQuota;
+
+	const Uptr originalTargetSize = targetTable->numElements.load(std::memory_order_acquire);
+	if(originalTargetSize < numElements)
+	{
+		// Grow the table to the same size as the original, without initializing the new elements
+		// since they will be written immediately following this.
+		if(growTableImpl(targetTable, numElements - originalTargetSize, nullptr, false)
+		   != GrowResult::success)
+		{
+			throw std::runtime_error("Error growing table for cloning into");
+		}
+	}
+	else if(originalTargetSize > numElements)
+	{
+		if(targetTable->resourceQuota)
+		{
+			targetTable->resourceQuota->tableElems.free(originalTargetSize - numElements);
+		}
+
+		Platform::RWMutex::ExclusiveLock resizingLock(targetTable->resizingMutex);
+
+		// Try to commit pages for the new elements, and return GrowResult::outOfMemory if the
+		// commit fails.
+		const Uptr newNumElements = numElements;
+		const Uptr previousNumPlatformPages
+			= getNumPlatformPages(originalTargetSize * sizeof(Table::Element));
+		const Uptr newNumPlatformPages
+			= getNumPlatformPages(newNumElements * sizeof(Table::Element));
+		if(newNumPlatformPages != previousNumPlatformPages)
+		{
+			Platform::decommitVirtualPages(
+				(U8*)targetTable->elements + (newNumElements << Platform::getBytesPerPageLog2()),
+				previousNumPlatformPages - newNumPlatformPages);
+		}
+		Platform::deregisterVirtualAllocation((previousNumPlatformPages - newNumPlatformPages)
+											  << Platform::getBytesPerPageLog2());
+
+		targetTable->numElements.store(newNumElements, std::memory_order_release);
+	}
+
+	// Copy the original table's elements to the new table.
+	for(Uptr elementIndex = 0; elementIndex < numElements; ++elementIndex)
+	{
+		targetTable->elements[elementIndex].biasedValue.store(
+			sourceTable->elements[elementIndex].biasedValue.load(std::memory_order_acquire),
+			std::memory_order_release);
+	}
+}
+
 Table* Runtime::cloneTable(Table* table, Compartment* newCompartment)
 {
-	Platform::RWMutex::ExclusiveLock resizingLock(table->resizingMutex);
+	Platform::RWMutex::ShareableLock resizingLock(table->resizingMutex);
 
 	// Create the new table.
 	const IR::TableType tableType = getTableType(table);
@@ -316,7 +381,9 @@ static Object* setTableElementNonNull(Table* table, Uptr index, Object* object)
 
 	// Verify the index is within the table's bounds.
 	if(index >= table->numReservedElements)
-	{ throwException(ExceptionTypes::outOfBoundsTableAccess, {table, U64(index)}); }
+	{
+		throwException(ExceptionTypes::outOfBoundsTableAccess, {table, U64(index)});
+	}
 
 	// Use a saturated index to access the table data to ensure that it's harmless for the CPU to
 	// speculate past the above bounds check.
@@ -331,10 +398,14 @@ static Object* setTableElementNonNull(Table* table, Uptr index, Object* object)
 	while(true)
 	{
 		if(biasedTableElementValueToObject(oldBiasedValue) == getOutOfBoundsElement())
-		{ throwException(ExceptionTypes::outOfBoundsTableAccess, {table, U64(index)}); }
+		{
+			throwException(ExceptionTypes::outOfBoundsTableAccess, {table, U64(index)});
+		}
 		if(table->elements[saturatedIndex].biasedValue.compare_exchange_weak(
 			   oldBiasedValue, biasedValue, std::memory_order_acq_rel))
-		{ break; }
+		{
+			break;
+		}
 	};
 
 	return biasedTableElementValueToObject(oldBiasedValue);
@@ -541,7 +612,9 @@ WAVM_DEFINE_INTRINSIC_FUNCTION(wavmIntrinsicsTable,
 				 &oldNumElements,
 				 initialValue ? initialValue : getUninitializedElement())
 	   != GrowResult::success)
-	{ return -1; }
+	{
+		return -1;
+	}
 	WAVM_ASSERT(oldNumElements <= INTPTR_MAX);
 	return Iptr(oldNumElements);
 }
@@ -621,7 +694,9 @@ WAVM_DEFINE_INTRINSIC_FUNCTION(wavmIntrinsicsTable,
 	Platform::RWMutex::ExclusiveLock elemSegmentsLock(instance->elemSegmentsMutex);
 
 	if(instance->elemSegments[elemSegmentIndex])
-	{ instance->elemSegments[elemSegmentIndex].reset(); }
+	{
+		instance->elemSegments[elemSegmentIndex].reset();
+	}
 }
 
 WAVM_DEFINE_INTRINSIC_FUNCTION(wavmIntrinsicsTable,
@@ -718,7 +793,9 @@ WAVM_DEFINE_INTRINSIC_FUNCTION(wavmIntrinsicsTable,
 		}
 
 		for(Uptr index = 0; index < numElements; ++index)
-		{ setTableElementNonNull(destTable, U64(destOffset) + U64(index), value); }
+		{
+			setTableElementNonNull(destTable, U64(destOffset) + U64(index), value);
+		}
 	});
 }
 
@@ -733,7 +810,9 @@ WAVM_DEFINE_INTRINSIC_FUNCTION(wavmIntrinsicsTable,
 {
 	Table* table = getTableFromRuntimeData(contextRuntimeData, tableId);
 	if(asObject(function) == getOutOfBoundsElement())
-	{ throwException(ExceptionTypes::outOfBoundsTableAccess, {table, U64(index)}); }
+	{
+		throwException(ExceptionTypes::outOfBoundsTableAccess, {table, U64(index)});
+	}
 	else if(asObject(function) == getUninitializedElement())
 	{
 		throwException(ExceptionTypes::uninitializedTableElement, {table, U64(index)});

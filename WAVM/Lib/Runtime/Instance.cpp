@@ -16,6 +16,10 @@
 #include "WAVM/Runtime/Runtime.h"
 #include "WAVM/WASM/WASM.h"
 
+#ifdef WAVM_HAS_TRACY
+#include <Tracy.hpp>
+#endif
+
 using namespace WAVM;
 using namespace WAVM::IR;
 using namespace WAVM::Runtime;
@@ -156,6 +160,9 @@ Instance* Runtime::instantiateModuleInternal(Compartment* compartment,
 											 std::string&& moduleDebugName,
 											 ResourceQuotaRefParam resourceQuota)
 {
+#ifdef WAVM_HAS_TRACY
+	ZoneNamedN(_zimi, "instantiateModuleInternal", true);
+#endif
 	WAVM_ASSERT(functionImports.size() == module->ir.functions.imports.size());
 	WAVM_ASSERT(tables.size() == module->ir.tables.imports.size());
 	WAVM_ASSERT(memories.size() == module->ir.memories.imports.size());
@@ -243,20 +250,26 @@ Instance* Runtime::instantiateModuleInternal(Compartment* compartment,
 	}
 
 	// Set up the values to bind to the symbols in the LLVMJIT object code.
-	HashMap<std::string, LLVMJIT::FunctionBinding> wavmIntrinsicsExportMap;
+	auto uninstantiatedFunctions = Intrinsics::getUninstantiatedFunctions(
+		{WAVM_INTRINSIC_MODULE_REF(wavmIntrinsics),
+		 WAVM_INTRINSIC_MODULE_REF(wavmIntrinsicsAtomics),
+		 WAVM_INTRINSIC_MODULE_REF(wavmIntrinsicsException),
+		 WAVM_INTRINSIC_MODULE_REF(wavmIntrinsicsMemory),
+		 WAVM_INTRINSIC_MODULE_REF(wavmIntrinsicsTable)});
+	HashMap<std::string, LLVMJIT::FunctionBinding> wavmIntrinsicsExportMap(
+		uninstantiatedFunctions.size());
 	for(const HashMapPair<std::string, Intrinsics::Function*>& intrinsicFunctionPair :
-		Intrinsics::getUninstantiatedFunctions({WAVM_INTRINSIC_MODULE_REF(wavmIntrinsics),
-												WAVM_INTRINSIC_MODULE_REF(wavmIntrinsicsAtomics),
-												WAVM_INTRINSIC_MODULE_REF(wavmIntrinsicsException),
-												WAVM_INTRINSIC_MODULE_REF(wavmIntrinsicsMemory),
-												WAVM_INTRINSIC_MODULE_REF(wavmIntrinsicsTable)}))
+		uninstantiatedFunctions)
 	{
 		LLVMJIT::FunctionBinding functionBinding{intrinsicFunctionPair.value->getNativeFunction()};
 		wavmIntrinsicsExportMap.add(intrinsicFunctionPair.key, functionBinding);
 	}
+	uninstantiatedFunctions.clear();
 
 	std::vector<Function*> functions;
+	functions.reserve(module->ir.functions.imports.size());
 	std::vector<LLVMJIT::FunctionBinding> jitFunctionImports;
+	jitFunctionImports.reserve(module->ir.functions.imports.size());
 	for(Uptr importIndex = 0; importIndex < module->ir.functions.imports.size(); ++importIndex)
 	{
 		const FunctionType functionType
@@ -274,12 +287,15 @@ Instance* Runtime::instantiateModuleInternal(Compartment* compartment,
 	}
 
 	std::vector<LLVMJIT::TableBinding> jitTables;
+	jitTables.reserve(tables.size());
 	for(Table* table : tables) { jitTables.push_back({table->id}); }
 
 	std::vector<LLVMJIT::MemoryBinding> jitMemories;
+	jitMemories.reserve(memories.size());
 	for(Memory* memory : memories) { jitMemories.push_back({memory->id}); }
 
 	std::vector<LLVMJIT::GlobalBinding> jitGlobals;
+	jitGlobals.reserve(globals.size());
 	for(Global* global : globals)
 	{
 		LLVMJIT::GlobalBinding globalSpec;
@@ -293,20 +309,38 @@ Instance* Runtime::instantiateModuleInternal(Compartment* compartment,
 	}
 
 	std::vector<LLVMJIT::ExceptionTypeBinding> jitExceptionTypes;
+	jitExceptionTypes.reserve(exceptionTypes.size());
 	for(ExceptionType* exceptionType : exceptionTypes)
-	{ jitExceptionTypes.push_back({exceptionType->id}); }
+	{
+		jitExceptionTypes.push_back({exceptionType->id});
+	}
 
 	// Create a FunctionMutableData for each function definition.
 	std::vector<FunctionMutableData*> functionDefMutableDatas;
+	functionDefMutableDatas.reserve(module->ir.functions.defs.size());
 	for(Uptr functionDefIndex = 0; functionDefIndex < module->ir.functions.defs.size();
 		++functionDefIndex)
 	{
-		std::string debugName
+		const std::string& origDebugName
 			= disassemblyNames.functions[module->ir.functions.imports.size() + functionDefIndex]
 				  .name;
-		if(!debugName.size())
-		{ debugName = "<function #" + std::to_string(functionDefIndex) + ">"; }
-		debugName = "wasm!" + moduleDebugName + '!' + debugName;
+		std::string debugName;
+		debugName.reserve(7 + moduleDebugName.size()
+						  + (origDebugName.empty() ? 16 : debugName.size()));
+		debugName.insert(debugName.size(), "wasm!");
+		debugName.insert(debugName.size(), moduleDebugName);
+		debugName.push_back('!');
+		if(!origDebugName.size())
+		{
+			debugName.reserve(16);
+			debugName.insert(debugName.size(), "<function #");
+			debugName.insert(debugName.size(), std::to_string(functionDefIndex));
+			debugName.push_back('>');
+		}
+		else
+		{
+			debugName.insert(debugName.size(), origDebugName);
+		}
 
 		functionDefMutableDatas.push_back(new FunctionMutableData(std::move(debugName)));
 	}
@@ -331,12 +365,16 @@ Instance* Runtime::instantiateModuleInternal(Compartment* compartment,
 
 	// LLVMJIT::loadModule filled in the functionDefMutableDatas' function pointers with the
 	// compiled functions. Add those functions to the module.
+	functions.reserve(functionDefMutableDatas.size());
 	for(FunctionMutableData* functionMutableData : functionDefMutableDatas)
-	{ functions.push_back(functionMutableData->function); }
+	{
+		functions.push_back(functionMutableData->function);
+	}
 
 	// Set up the instance's exports.
-	HashMap<std::string, Object*> exportMap;
+	HashMap<std::string, Object*> exportMap(module->ir.exports.size());
 	std::vector<Object*> exports;
+	exports.reserve(module->ir.exports.size());
 	for(const Export& exportIt : module->ir.exports)
 	{
 		Object* exportedObject = nullptr;
@@ -362,9 +400,13 @@ Instance* Runtime::instantiateModuleInternal(Compartment* compartment,
 
 	// Copy the module's data and elem segments into the Instance for later use.
 	DataSegmentVector dataSegments;
+	dataSegments.reserve(module->ir.dataSegments.size());
 	ElemSegmentVector elemSegments;
+	elemSegments.reserve(module->ir.elemSegments.size());
 	for(const DataSegment& dataSegment : module->ir.dataSegments)
-	{ dataSegments.push_back(dataSegment.isActive ? nullptr : dataSegment.data); }
+	{
+		dataSegments.push_back(dataSegment.isActive ? nullptr : dataSegment.data);
+	}
 	for(const ElemSegment& elemSegment : module->ir.elemSegments)
 	{
 		elemSegments.push_back(elemSegment.type == ElemSegment::Type::passive ? elemSegment.contents
@@ -477,42 +519,59 @@ Instance* Runtime::instantiateModuleInternal(Compartment* compartment,
 Instance* Runtime::cloneInstance(Instance* instance, Compartment* newCompartment)
 {
 	// Remap the module's references to the cloned compartment.
-	HashMap<std::string, Object*> newExportMap;
+	HashMap<std::string, Object*> newExportMap(instance->exportMap.size());
 	for(const auto& pair : instance->exportMap)
-	{ newExportMap.add(pair.key, remapToClonedCompartment(pair.value, newCompartment)); }
+	{
+		newExportMap.add(pair.key, remapToClonedCompartment(pair.value, newCompartment));
+	}
 	std::vector<Object*> newExports;
+	newExports.reserve(instance->exports.size());
 	for(Object* exportObject : instance->exports)
-	{ newExports.push_back(remapToClonedCompartment(exportObject, newCompartment)); }
+	{
+		newExports.push_back(remapToClonedCompartment(exportObject, newCompartment));
+	}
 
 	std::vector<Function*> newFunctions = instance->functions;
 
 	std::vector<Table*> newTables;
+	newTables.reserve(instance->tables.size());
 	for(Table* table : instance->tables)
-	{ newTables.push_back(remapToClonedCompartment(table, newCompartment)); }
+	{
+		newTables.push_back(remapToClonedCompartment(table, newCompartment));
+	}
 
 	std::vector<Memory*> newMemories;
+	newMemories.reserve(instance->memories.size());
 	for(Memory* memory : instance->memories)
-	{ newMemories.push_back(remapToClonedCompartment(memory, newCompartment)); }
+	{
+		newMemories.push_back(remapToClonedCompartment(memory, newCompartment));
+	}
 
 	std::vector<Global*> newGlobals;
+	newGlobals.reserve(instance->globals.size());
 	for(Global* global : instance->globals)
-	{ newGlobals.push_back(remapToClonedCompartment(global, newCompartment)); }
+	{
+		newGlobals.push_back(remapToClonedCompartment(global, newCompartment));
+	}
 
 	std::vector<ExceptionType*> newExceptionTypes;
+	newExceptionTypes.reserve(instance->exceptionTypes.size());
 	for(ExceptionType* exceptionType : instance->exceptionTypes)
-	{ newExceptionTypes.push_back(remapToClonedCompartment(exceptionType, newCompartment)); }
+	{
+		newExceptionTypes.push_back(remapToClonedCompartment(exceptionType, newCompartment));
+	}
 
 	Function* newStartFunction = remapToClonedCompartment(instance->startFunction, newCompartment);
 
 	DataSegmentVector newDataSegments;
 	{
-		Platform::RWMutex::ExclusiveLock passiveDataSegmentsLock(instance->dataSegmentsMutex);
+		Platform::RWMutex::ShareableLock passiveDataSegmentsLock(instance->dataSegmentsMutex);
 		newDataSegments = instance->dataSegments;
 	}
 
 	ElemSegmentVector newElemSegments;
 	{
-		Platform::RWMutex::ExclusiveLock passiveElemSegmentsLock(instance->elemSegmentsMutex);
+		Platform::RWMutex::ShareableLock passiveElemSegmentsLock(instance->elemSegmentsMutex);
 		newElemSegments = instance->elemSegments;
 	}
 

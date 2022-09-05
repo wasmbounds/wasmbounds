@@ -21,7 +21,13 @@ set(Sources
 set(PublicHeaders
 	${WAVM_INCLUDE_DIR}/LLVMJIT/LLVMJIT.h)
 
+if(${WAVM_PERF_LIBS})
+message(STATUS "Adding WAVM perf events")
+
 # Find the LLVM libraries to link with.
+# This is a bit lazy, should find only what's needed
+llvm_map_components_to_libnames(LLVM_LIBS all)
+else()
 llvm_map_components_to_libnames(LLVM_LIBS
 	support
 	core
@@ -31,6 +37,7 @@ llvm_map_components_to_libnames(LLVM_LIBS
 	DebugInfoDWARF
 	AllTargetsAsmParsers
 	${LLVM_TARGETS_TO_BUILD})
+endif()
 
 # Create the LLVMJIT target.
 WAVM_ADD_LIB_COMPONENT(LLVMJIT

@@ -173,7 +173,7 @@ WAVM_NO_ASAN static void touchStackPages(U8* minAddr, Uptr numBytesPerPage)
 		sum += *touchAddr;
 		if(touchAddr < minAddr + numBytesPerPage) { break; }
 	}
-	WAVM_SUPPRESS_UNUSED(sum);
+	(void)sum;
 }
 
 bool Platform::initThreadAndGlobalSignalsOnce()

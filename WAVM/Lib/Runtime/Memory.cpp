@@ -15,6 +15,11 @@
 #include "WAVM/Platform/RWMutex.h"
 #include "WAVM/Runtime/Runtime.h"
 #include "WAVM/RuntimeABI/RuntimeABI.h"
+#ifdef WAVM_HAS_TRACY
+#include <Tracy.hpp>
+#endif
+
+#include "wasmbounds_rr.hpp"
 
 using namespace WAVM;
 using namespace WAVM::Runtime;
@@ -45,6 +50,9 @@ static Memory* createMemoryImpl(Compartment* compartment,
 								std::string&& debugName,
 								ResourceQuotaRefParam resourceQuota)
 {
+#ifdef WAVM_HAS_TRACY
+	ZoneNamedNS(_zone_root, "Memory::createMemoryImpl", 6, true);
+#endif
 	Memory* memory = new Memory(compartment, type, std::move(debugName), resourceQuota);
 
 	const Uptr pageBytesLog2 = Platform::getBytesPerPageLog2();
@@ -69,7 +77,14 @@ static Memory* createMemoryImpl(Compartment* compartment,
 	}
 
 	const Uptr numGuardPages = memoryNumGuardBytes >> pageBytesLog2;
-	memory->baseAddress = Platform::allocateVirtualPages(memoryMaxPages + numGuardPages);
+	{
+#ifdef WAVM_HAS_TRACY
+		ZoneScopedN("allocateVirtualPages");
+		ZoneValue(memoryMaxPages + numGuardPages);
+#endif
+		memory->baseAddress = resizableRegionAllocator->allocateRegion(
+			0, ((memoryMaxPages << pageBytesLog2) + memoryNumGuardBytes));
+	}
 	memory->numReservedBytes = memoryMaxPages << pageBytesLog2;
 	if(!memory->baseAddress)
 	{
@@ -77,19 +92,28 @@ static Memory* createMemoryImpl(Compartment* compartment,
 		return nullptr;
 	}
 
-	// Grow the memory to the type's minimum size.
-	if(growMemory(memory, type.size.min) != GrowResult::success)
 	{
-		delete memory;
-		return nullptr;
+#ifdef WAVM_HAS_TRACY
+		ZoneNamedN(_zone_gw, "growMemory", true);
+#endif
+		// Grow the memory to the type's minimum size.
+		if(growMemory(memory, type.size.min) != GrowResult::success)
+		{
+			delete memory;
+			return nullptr;
+		}
 	}
 
 	// Add the memory to the global array.
 	{
-		Platform::RWMutex::ExclusiveLock memoriesLock(memoriesMutex);
-		memories.push_back(memory);
+#ifdef WAVM_HAS_TRACY
+		ZoneNamedN(_zone_ata, "addToArray", true);
+#endif
+		{
+			Platform::RWMutex::ExclusiveLock memoriesLock(memoriesMutex);
+			memories.push_back(memory);
+		}
 	}
-
 	return memory;
 }
 
@@ -98,6 +122,9 @@ Memory* Runtime::createMemory(Compartment* compartment,
 							  std::string&& debugName,
 							  ResourceQuotaRefParam resourceQuota)
 {
+#ifdef WAVM_HAS_TRACY
+	ZoneNamedNS(_zone_root, "Runtime::createMemory", 6, true);
+#endif
 	WAVM_ASSERT(type.size.min <= UINTPTR_MAX);
 	Memory* memory = createMemoryImpl(compartment, type, std::move(debugName), resourceQuota);
 	if(!memory) { return nullptr; }
@@ -106,6 +133,9 @@ Memory* Runtime::createMemory(Compartment* compartment,
 	{
 		Platform::RWMutex::ExclusiveLock compartmentLock(compartment->mutex);
 
+#ifdef WAVM_HAS_TRACY
+		ZoneNamedN(_zone_aim, "add to IndexMap", true);
+#endif
 		memory->id = compartment->memories.add(UINTPTR_MAX, memory);
 		if(memory->id == UINTPTR_MAX)
 		{
@@ -124,7 +154,10 @@ Memory* Runtime::createMemory(Compartment* compartment,
 
 Memory* Runtime::cloneMemory(Memory* memory, Compartment* newCompartment)
 {
-	Platform::RWMutex::ExclusiveLock resizingLock(memory->resizingMutex);
+#ifdef WAVM_HAS_TRACY
+	ZoneNamedNS(_zone_root, "Runtime::cloneMemory", 6, true);
+#endif
+	Platform::RWMutex::ShareableLock resizingLock(memory->resizingMutex);
 	const IR::MemoryType memoryType = getMemoryType(memory);
 	std::string debugName = memory->debugName;
 	Memory* newMemory
@@ -139,6 +172,9 @@ Memory* Runtime::cloneMemory(Memory* memory, Compartment* newCompartment)
 	// Insert the memory in the new compartment's memories array with the same index as it had in
 	// the original compartment's memories IndexMap.
 	{
+#ifdef WAVM_HAS_TRACY
+		ZoneNamedN(_zone_iic, "insert into compartment", true);
+#endif
 		Platform::RWMutex::ExclusiveLock compartmentLock(newCompartment->mutex);
 
 		newMemory->id = memory->id;
@@ -151,6 +187,52 @@ Memory* Runtime::cloneMemory(Memory* memory, Compartment* newCompartment)
 	}
 
 	return newMemory;
+}
+
+void Runtime::cloneMemoryInto(Memory* targetMemory,
+							  const Memory* sourceMemory,
+							  Compartment* newCompartment)
+{
+#ifdef WAVM_HAS_TRACY
+	ZoneNamedNS(_zone_root, "Runtime::cloneMemoryInto", 6, true);
+#endif
+	Platform::RWMutex::ShareableLock resizingLock(sourceMemory->resizingMutex);
+	if(targetMemory->indexType != sourceMemory->indexType)
+	{
+		throw std::runtime_error(
+			"Mismatched index types of memories between source and target cloned memory");
+	}
+	targetMemory->debugName = sourceMemory->debugName;
+	targetMemory->resourceQuota = sourceMemory->resourceQuota;
+	const auto targetOriginalPageCount = getMemoryNumPages(targetMemory);
+	const auto sourcePageCount = getMemoryNumPages(sourceMemory);
+	if(targetOriginalPageCount < sourcePageCount)
+	{
+		if(growMemory(targetMemory, sourcePageCount - targetOriginalPageCount, nullptr)
+		   != GrowResult::success)
+		{
+			throw std::runtime_error("Couldn't grow memory for cloning from another module");
+		}
+	}
+	else if(targetOriginalPageCount > sourcePageCount)
+	{
+		if(shrinkMemory(targetMemory, targetOriginalPageCount - sourcePageCount, nullptr)
+		   != GrowResult::success)
+		{
+			throw std::runtime_error("Couldn't shrink memory for cloning from another module");
+		}
+	}
+	{
+#ifdef WAVM_HAS_TRACY
+		ZoneScopedN("memcpy memory content");
+		ZoneValue(sourcePageCount * IR::numBytesPerPage);
+#endif
+		std::copy(reinterpret_cast<const uint64_t*>(sourceMemory->baseAddress),
+				  reinterpret_cast<const uint64_t*>(sourceMemory->baseAddress
+													+ sourcePageCount * IR::numBytesPerPage),
+				  reinterpret_cast<uint64_t*>(targetMemory->baseAddress));
+	}
+	// compartment should already be up to date
 }
 
 Runtime::Memory::~Memory()
@@ -186,10 +268,10 @@ Runtime::Memory::~Memory()
 	const Uptr pageBytesLog2 = Platform::getBytesPerPageLog2();
 	if(baseAddress && numReservedBytes > 0)
 	{
-		Platform::freeVirtualPages(baseAddress,
-								   (numReservedBytes + memoryNumGuardBytes) >> pageBytesLog2);
+		resizableRegionAllocator->freeRegion(
+			baseAddress, (numReservedBytes + memoryNumGuardBytes) >> pageBytesLog2);
 
-		Platform::deregisterVirtualAllocation(numPages >> pageBytesLog2);
+		// Platform::deregisterVirtualAllocation(numPages >> pageBytesLog2);
 	}
 
 	// Free the allocated quota.
@@ -234,7 +316,9 @@ GrowResult Runtime::growMemory(Memory* memory, Uptr numPagesToGrow, Uptr* outOld
 	{
 		// Check the memory page quota.
 		if(memory->resourceQuota && !memory->resourceQuota->memoryPages.allocate(numPagesToGrow))
-		{ return GrowResult::outOfQuota; }
+		{
+			return GrowResult::outOfQuota;
+		}
 
 		Platform::RWMutex::ExclusiveLock resizingLock(memory->resizingMutex);
 		oldNumPages = memory->numPages.load(std::memory_order_acquire);
@@ -252,15 +336,19 @@ GrowResult Runtime::growMemory(Memory* memory, Uptr numPagesToGrow, Uptr* outOld
 		}
 
 		// Try to commit the new pages, and return GrowResult::outOfMemory if the commit fails.
-		if(!Platform::commitVirtualPages(
-			   memory->baseAddress + oldNumPages * IR::numBytesPerPage,
-			   numPagesToGrow << getPlatformPagesPerWebAssemblyPageLog2()))
-		{
-			if(memory->resourceQuota) { memory->resourceQuota->memoryPages.free(numPagesToGrow); }
-			return GrowResult::outOfMemory;
-		}
-		Platform::registerVirtualAllocation(numPagesToGrow
-											<< getPlatformPagesPerWebAssemblyPageLog2());
+		// if(!Platform::commitVirtualPages(
+		// 	   memory->baseAddress + oldNumPages * IR::numBytesPerPage,
+		// 	   numPagesToGrow << getPlatformPagesPerWebAssemblyPageLog2()))
+		// {
+		// 	if(memory->resourceQuota) { memory->resourceQuota->memoryPages.free(numPagesToGrow); }
+		// 	return GrowResult::outOfMemory;
+		// }
+		// Platform::registerVirtualAllocation(numPagesToGrow
+		// 									<< getPlatformPagesPerWebAssemblyPageLog2());
+		resizableRegionAllocator->resizeRegion(
+			memory->baseAddress,
+			oldNumPages * IR::numBytesPerPage,
+			(oldNumPages + numPagesToGrow) * IR::numBytesPerPage);
 
 		const Uptr newNumPages = oldNumPages + numPagesToGrow;
 		memory->numPages.store(newNumPages, std::memory_order_release);
@@ -275,8 +363,52 @@ GrowResult Runtime::growMemory(Memory* memory, Uptr numPagesToGrow, Uptr* outOld
 	return GrowResult::success;
 }
 
+GrowResult Runtime::shrinkMemory(Memory* memory, Uptr numPagesToShrink, Uptr* outNewNumPages)
+{
+	Uptr oldNumPages;
+	if(numPagesToShrink == 0) { oldNumPages = memory->numPages.load(std::memory_order_seq_cst); }
+	else
+	{
+		Platform::RWMutex::ExclusiveLock resizingLock(memory->resizingMutex);
+		oldNumPages = memory->numPages.load(std::memory_order_acquire);
+
+		// Check for freeing more pages than currently allocated
+		if(numPagesToShrink > oldNumPages) { return GrowResult::outOfMaxSize; }
+
+		// Check the memory page quota.
+		if(memory->resourceQuota && !memory->resourceQuota->memoryPages.allocate(-numPagesToShrink))
+		{
+			return GrowResult::outOfQuota;
+		}
+
+		const Uptr newNumPages = oldNumPages - numPagesToShrink;
+
+		// Try to commit the new pages, and return GrowResult::outOfMemory if the commit fails.
+		// Platform::decommitVirtualPages(
+		// 	memory->baseAddress + newNumPages * IR::numBytesPerPage,
+		// 	numPagesToShrink << getPlatformPagesPerWebAssemblyPageLog2());
+		// Platform::deregisterVirtualAllocation(numPagesToShrink
+		// 									  << getPlatformPagesPerWebAssemblyPageLog2());
+		resizableRegionAllocator->resizeRegion(
+			memory->baseAddress,
+			oldNumPages * IR::numBytesPerPage,
+			(oldNumPages - numPagesToShrink) * IR::numBytesPerPage);
+
+		memory->numPages.store(newNumPages, std::memory_order_release);
+		if(memory->id != UINTPTR_MAX)
+		{
+			memory->compartment->runtimeData->memories[memory->id].numPages.store(
+				newNumPages, std::memory_order_release);
+		}
+	}
+
+	if(outNewNumPages) { *outNewNumPages = oldNumPages; }
+	return GrowResult::success;
+}
+
 void Runtime::unmapMemoryPages(Memory* memory, Uptr pageIndex, Uptr numPages)
 {
+	throw std::runtime_error("unmapMemoryPages is unused");
 	WAVM_ASSERT(pageIndex + numPages > pageIndex);
 	WAVM_ASSERT((pageIndex + numPages) * IR::numBytesPerPage <= memory->numReservedBytes);
 
@@ -419,7 +551,9 @@ WAVM_DEFINE_INTRINSIC_FUNCTION(wavmIntrinsicsMemory,
 	Platform::RWMutex::ExclusiveLock dataSegmentsLock(instance->dataSegmentsMutex);
 
 	if(instance->dataSegments[dataSegmentIndex])
-	{ instance->dataSegments[dataSegmentIndex].reset(); }
+	{
+		instance->dataSegments[dataSegmentIndex].reset();
+	}
 }
 
 WAVM_DEFINE_INTRINSIC_FUNCTION(wavmIntrinsics,
