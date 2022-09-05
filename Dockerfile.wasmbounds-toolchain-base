@@ -1,0 +1,45 @@
+FROM wasmbounds-runtime-base:latest
+
+# Repo dependencies
+RUN apt-get update --yes && \
+    apt-get upgrade --yes --no-install-recommends && \
+    apt-get install --yes --no-install-recommends \
+        build-essential \
+        cargo \
+        clang \
+        clang-13 \
+        clang-format-13 \
+        clang-tools-13 \
+        cmake \
+        gdb \
+        git \
+        libabsl-dev \
+        libboost-all-dev \
+        libboost-dev \
+        libclang-11-dev \
+        libclang-13-dev \
+        libnsl-dev \
+        llvm-11-dev \
+        ninja-build \
+        rust-clippy \
+        rustc \
+    && apt-get clean autoclean \
+    && apt-get autoremove
+
+# WASI SDK
+WORKDIR /opt/wasi-sdk
+ENV WASI_VERSION=15
+ENV WASI_VERSION_FULL=15.0
+RUN wget "https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-${WASI_VERSION}/wasi-sdk-${WASI_VERSION_FULL}-linux.tar.gz" && \
+    tar -xvz --strip-components=1 -f "wasi-sdk-${WASI_VERSION_FULL}-linux.tar.gz" && \
+    rm "wasi-sdk-${WASI_VERSION_FULL}-linux.tar.gz"
+ENV WASI_SDK_PATH="/opt/wasi-sdk/"
+RUN mkdir -p /usr/lib/clang/14.0.0/lib/wasi/
+RUN cp -a /opt/wasi-sdk/lib/clang/14.0.3/lib/wasi/libclang_rt.builtins-wasm32.a /usr/lib/clang/14/lib/wasi/
+RUN cp -a /opt/wasi-sdk/share/wasi-sysroot/lib/wasm32-wasi/libm.a /opt/wasi-sdk/share/wasi-sysroot/lib/wasm32-wasi/libgcc.a
+ENV WASI_CC="/opt/wasi-sdk/bin/clang"
+ENV WASI_CXX="/opt/wasi-sdk/bin/clang++"
+ENV WASI_LD="/opt/wasi-sdk/bin/ld.lld"
+
+WORKDIR /root
+CMD ["/usr/bin/bash"]

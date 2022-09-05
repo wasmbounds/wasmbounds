@@ -1,0 +1,18 @@
+{
+    "compilerOptions": {
+        "checkJs": true,
+        "module": "CommonJS",
+        "target": "ESNext"
+    },
+    "exclude": [
+        "node_modules",
+        "**/node_modules/*",
+        "node-v18.2.0",
+        "runner-build",
+        "rundirs",
+        "spec-cpu",
+        "wasmtime",
+        "WAVM",
+        "wasm3-0.5.0"
+    ]
+}

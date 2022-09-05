@@ -1,0 +1,60 @@
+[ Legend: Modified register | Code | Heap | Stack | String ]
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── registers ────
+$zero: 0x00000000000000  →  0x00000000000000
+$ra  : 0x00002aab5666b8  →  <llvm::RuntimeDyldImpl::computeGOTSize(llvm::object::ObjectFile+0> beqz a0, 0x2aab566766 <_ZN4llvm15RuntimeDyldImpl14computeGOTSizeERKNS_6object10ObjectFileE+210>
+$sp  : 0x3fffffd010      
+$gp  : 0x00002aaea4ff78  →  0x00000000000000  →  0x00000000000000
+$tp  : 0x3ff7bee800      
+$t0  : 0x000000000000b0  →  0x000000000000b0
+$t1  : 0x00002aab19527c  →  0x03898e1700000013
+$t2  : 0x000000000003ff  →  0x000000000003ff
+$fp  : 0x2aaeba5fa0      
+$s1  : 0x2aaeba5fa0      
+$a0  : 0x00000000000000  →  0x00000000000000
+$a1  : 0xa0000002        
+$a2  : 0x00000000000016  →  0x00000000000016
+$a3  : 0x00000000400000  →  0x00000000400000
+$a4  : 0x00000000008000  →  0x00000000008000
+$a5  : 0x00000000000000  →  0x00000000000000
+$a6  : 0xfefefefefefefeff
+$a7  : 0x00000000000091  →  0x00000000000091
+$s2  : 0xfffffffffffffffe
+$s3  : 0x00000000000008  →  0x00000000000008
+$s4  : 0x00000000000001  →  0x00000000000001
+$s5  : 0x000000000015f0  →  0x000000000015f0
+$s6  : 0x00000000000000  →  0x00000000000000
+$s7  : 0xfffffffc        
+$s8  : 0x0000000000000c  →  0x0000000000000c
+$s9  : 0xa0000002        
+$s10 : 0x3fffffd2a0      
+$s11 : 0x00000000000000  →  0x00000000000000
+$t3  : 0x3ff7c65838      
+$t4  : 0x0000000000000f  →  0x0000000000000f
+$t5  : 0x00000000000000  →  0x00000000000000
+$t6  : 0x00000000000000  →  0x00000000000000
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── stack ────
+[!] Unmapped address: '0x3fffffd010'
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── code:riscv:RISCV ────
+   0x2aab5736a8 <llvm::RuntimeDyldELF::finalizeLoad(llvm::object::ObjectFile+0> sd     s7, 216(sp)
+   0x2aab5736aa <llvm::RuntimeDyldELF::finalizeLoad(llvm::object::ObjectFile+0> sd     s8, 208(sp)
+   0x2aab5736ac <llvm::RuntimeDyldELF::finalizeLoad(llvm::object::ObjectFile+0> sd     s9, 200(sp)
+ → 0x2aab5736b4 <llvm::RuntimeDyldELF::finalizeLoad(llvm::object::ObjectFile+0> lbu    a1, 229(a1)
+   0x2aab5736b8 <llvm::RuntimeDyldELF::finalizeLoad(llvm::object::ObjectFile+0> mv     s3, a3
+   0x2aab5736ba <llvm::RuntimeDyldELF::finalizeLoad(llvm::object::ObjectFile+0> mv     s4, a2
+   0x2aab5736bc <llvm::RuntimeDyldELF::finalizeLoad(llvm::object::ObjectFile+0> mv     s2, a0
+   0x2aab5736be <llvm::RuntimeDyldELF::finalizeLoad(llvm::object::ObjectFile+0> beqz   a1, 0x2aab57372e <_ZN4llvm14RuntimeDyldELF12finalizeLoadERKNS_6object10ObjectFileERSt3mapINS1_10SectionRefEjSt4lessIS6_ESaISt4pairIKS6_jEEE+152>
+   0x2aab5736c0 <llvm::RuntimeDyldELF::finalizeLoad(llvm::object::ObjectFile+0> lw     a0, 432(s9)
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── threads ────
+[#0] Id 1, Name: "wbrunner_wavm", stopped 0x2aab5736b4 in llvm::RuntimeDyldELF::finalizeLoad(llvm::object::ObjectFile const&, std::map<llvm::object::SectionRef, unsigned int, std::less<llvm::object::SectionRef>, std::allocator<std::pair<llvm::object::SectionRef const, unsigned int> > >&) (), reason: SIGSEGV
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── trace ────
+[#0] 0x2aab5736b4 → llvm::RuntimeDyldELF::finalizeLoad(llvm::object::ObjectFile const&, std::map<llvm::object::SectionRef, unsigned int, std::less<llvm::object::SectionRef>, std::allocator<std::pair<llvm::object::SectionRef const, unsigned int> > >&)()
+[#1] 0x2aab5666b8 → llvm::RuntimeDyldImpl::computeGOTSize(llvm::object::ObjectFile const&)()
+[#2] 0x2aab565c9e → llvm::RuntimeDyldImpl::computeTotalAllocSize(llvm::object::ObjectFile const&, unsigned long&, unsigned int&, unsigned long&, unsigned int&, unsigned long&, unsigned int&)()
+[#3] 0x2aab564bd4 → llvm::RuntimeDyldImpl::loadObjectImpl(llvm::object::ObjectFile const&)()
+[#4] 0x2aab56f276 → llvm::RuntimeDyldELF::loadObject(llvm::object::ObjectFile const&)()
+[#5] 0x2aab56880a → llvm::RuntimeDyld::loadObject(llvm::object::ObjectFile const&)()
+[#6] 0x2aab48d4dc → WAVM::LLVMJIT::Module::Module(std::vector<unsigned char, std::allocator<unsigned char> > const&, WAVM::HashMap<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, unsigned long, WAVM::DefaultHashPolicy<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > > > const&, bool, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >&&)()
+[#7] 0x2aab49b024 → void __gnu_cxx::new_allocator<WAVM::LLVMJIT::Module>::construct<WAVM::LLVMJIT::Module, std::vector<unsigned char, std::allocator<unsigned char> > const&, WAVM::HashMap<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, unsigned long, WAVM::DefaultHashPolicy<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > > >&, bool, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > >(WAVM::LLVMJIT::Module*, std::vector<unsigned char, std::allocator<unsigned char> > const&, WAVM::HashMap<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, unsigned long, WAVM::DefaultHashPolicy<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > > >&, bool&&, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >&&)()
+[#8] 0x2aab49ac08 → void std::allocator_traits<std::allocator<WAVM::LLVMJIT::Module> >::construct<WAVM::LLVMJIT::Module, std::vector<unsigned char, std::allocator<unsigned char> > const&, WAVM::HashMap<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, unsigned long, WAVM::DefaultHashPolicy<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > > >&, bool, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > >(std::allocator<WAVM::LLVMJIT::Module>&, WAVM::LLVMJIT::Module*, std::vector<unsigned char, std::allocator<unsigned char> > const&, WAVM::HashMap<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, unsigned long, WAVM::DefaultHashPolicy<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > > >&, bool&&, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >&&)()
+[#9] 0x2aab49a5f2 → std::_Sp_counted_ptr_inplace<WAVM::LLVMJIT::Module, std::allocator<WAVM::LLVMJIT::Module>, (__gnu_cxx::_Lock_policy)1>::_Sp_counted_ptr_inplace<std::vector<unsigned char, std::allocator<unsigned char> > const&, WAVM::HashMap<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, unsigned long, WAVM::DefaultHashPolicy<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > > >&, bool, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > >(std::allocator<WAVM::LLVMJIT::Module>, std::vector<unsigned char, std::allocator<unsigned char> > const&, WAVM::HashMap<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, unsigned long, WAVM::DefaultHashPolicy<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > > >&, bool&&, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >&&)()
+    

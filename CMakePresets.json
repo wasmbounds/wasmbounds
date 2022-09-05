@@ -1,0 +1,88 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 22,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "default",
+      "displayName": "Ninja Multi-Config",
+      "description": "Default build using Ninja Multi-Config generator",
+      "generator": "Ninja Multi-Config",
+      "binaryDir": "${sourceDir}/runner-build/default",
+      "cacheVariables": {
+        "CMAKE_EXPORT_COMPILE_COMMANDS": {
+          "type": "BOOL",
+          "value": true
+        },
+        "BUILD_SHARED_LIBS": {
+          "type": "BOOL",
+          "value": false
+        }
+      },
+      "environment": {
+        "CC": "gcc",
+        "CXX": "g++"
+      }
+    },
+    {
+      "name": "docker",
+      "displayName": "Ninja Multi-Config",
+      "description": "In-container build config",
+      "inherits": "default",
+      "binaryDir": "${sourceDir}/runner-build/docker",
+      "cacheVariables": {
+        "CFG_LLVM_DIR": {
+          "type": "STRING",
+          "value": "/usr/lib/llvm-11/lib/cmake/llvm"
+        },
+        "CMAKE_PREFIX_PATH": {
+          "type": "STRING",
+          "value": "/usr/lib/cmake"
+        },
+        "CMAKE_INSTALL_PREFIX": {
+          "type": "STRING",
+          "value": "/opt/wasmbounds"
+        },
+        "CMAKE_HAVE_LIBC_PTHREAD": {
+          "type": "BOOL",
+          "value": true
+        }
+      },
+      "environment": {
+        "CC": "gcc",
+        "CXX": "g++"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "debug",
+      "configurePreset": "default",
+      "configuration": "Debug"
+    },
+    {
+      "name": "release-with-debug-info",
+      "configurePreset": "default",
+      "configuration": "RelWithDebInfo"
+    },
+    {
+      "name": "release",
+      "configurePreset": "default",
+      "configuration": "Release"
+    },
+    {
+      "name": "debug-docker",
+      "configurePreset": "docker",
+      "configuration": "Debug"
+    },
+    {
+      "name": "release-docker",
+      "configurePreset": "docker",
+      "configuration": "Release"
+    }
+  ],
+  "testPresets": []
+}

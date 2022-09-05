@@ -1,0 +1,30 @@
+FROM ubuntu:22.04
+
+# Repo dependencies
+RUN apt-get update --yes && \
+    apt-get upgrade --yes --no-install-recommends && \
+    apt-get install --yes --no-install-recommends \
+        curl \
+        ffmpeg \
+        gpg \
+        libabsl20210324 \
+        libboost-container1.74.0 \
+        libboost-filesystem1.74.0 \
+        libboost-stacktrace1.74.0 \
+        libboost-system1.74.0 \
+        libclang1-13 \
+        libllvm11 \
+        libnsl2 \
+        lsb-release \
+        perl \
+        python-is-python3 \
+        python3-pip \
+        python3-virtualenv \
+        sudo \
+        wget \
+        xxd \
+    && apt-get clean autoclean \
+    && apt-get autoremove
+
+WORKDIR /root
+CMD ["/usr/bin/bash"]

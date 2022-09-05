@@ -1,0 +1,802 @@
+---
+title: "Wasmbounds results"
+author: "Raven Szewczyk"
+date: "2022-07-11"
+output:
+  html_document:
+    toc: yes
+  pdf_document:
+    toc: yes
+---
+
+```{r setup, include=FALSE, error=FALSE}
+library(tidyverse)
+library(rio)
+library(scales)
+library(xtable)
+library(ggbreak)
+library(patchwork)
+knitr::opts_chunk$set(echo = FALSE, error = TRUE)
+```
+
+```{r read_raw_csv, include=FALSE, error=FALSE}
+machine = "kone"
+raw_csv <- import(paste0("../runs/", machine, ".csv"), "csv", fill=TRUE, header=TRUE)
+```
+
+```{r parse_csv, include=FALSE, error=FALSE}
+
+t_us <- raw_csv %>%
+    select(benchid, runid, starts_with("mus_")) %>%
+    pivot_longer(cols = starts_with("mus_"), names_to = c("mid"), names_pattern="mus_([0-9]+)", values_to = c("us"), values_drop_na = TRUE)
+
+t_us_stats <- t_us %>% select(runid,us) %>%
+    group_by(runid) %>%
+    arrange(us) %>%
+    summarise(mean_us=mean(us), med_us=median(us),
+        min_us=quantile(us, 0.01), max_us=quantile(us, 0.99), num_us=n(),
+        q1_us=quantile(us, 0.25), q3_us=quantile(us, 0.75))
+
+LBL_NATIVE_GCC <- 'Native\nGCC'
+LBL_NATIVE_CLANG <- 'Native\nClang'
+
+t_info <- raw_csv %>% select(!starts_with("mus_") & !starts_with("local_io") & !starts_with("local_net") & !starts_with("local_faasm")) %>% filter(nthreads != 32) %>%
+  mutate (
+    benchname = factor(benchname),
+    runner = factor(runner, ordered = TRUE,
+      levels = c("native.gcc", "native.clang", "wavm.wasm", "wasmtime.wasm", "wasm3.wasm", "nodejs.wasm"),
+      labels = c(LBL_NATIVE_GCC, LBL_NATIVE_CLANG, "WAVM", "Wasmtime", "W3", "V8")
+    ),
+    nthreads_f = factor(nthreads),
+    bounds = factor(
+      ifelse(as.character(runner) == "W3", "trap", as.character(bounds))
+      , ordered = TRUE,
+      levels = c("none",      "mdiscard", "uffd", "clamp",          "trap"),
+      labels = c("No checks", "Mprotect", "UFFD", "Clamp", "Trap")),
+    default_bounds_name = ifelse(startsWith(as.character(runner), "Native"), "No checks", ifelse(as.character(runner) == "W3", "Trap", "Mprotect")),
+    is_default_bounds = as.character(bounds) == as.character(default_bounds_name),
+    runbounds = factor(paste(runner, bounds, sep = "\n")),
+    suite = factor(ifelse(startsWith(as.character(benchname), "rundirs"), "SPEC", "PBC")),
+    suite_fancy = factor(ifelse(startsWith(as.character(benchname), "rundirs"), "SPEC CPU", "PolyBench/C")),
+    benchname_fancy = str_match(as.character(benchname), "^(rundirs/[0-9]+\\.)?([^_]+)")[,3]
+  ) %>%
+  left_join(t_us_stats)
+
+if ("local_cpums_user_sum" %in% names(t_info)) {
+  t_info <- mutate(t_info, total_cpums = local_cpums_user_sum + local_cpums_nice_sum + local_cpums_system_sum + local_cpums_idle_sum + local_cpums_irq_sum + local_cpums_softirq_sum)
+}
+
+gcc_times <- t_info %>% filter(runner == LBL_NATIVE_GCC) %>% select(benchid, nthreads, gcc_us = med_us)
+clang_times <- t_info %>% filter(runner == LBL_NATIVE_CLANG) %>% select(benchid, nthreads, clang_us = med_us)
+clang_1t_times <- t_info %>% filter(runner == LBL_NATIVE_CLANG, nthreads == 1) %>% select(benchid, clang_1t_us = med_us)
+
+t_info <- left_join(t_info, gcc_times, by = c('benchid', 'nthreads'))
+t_info <- left_join(t_info, clang_times, by = c('benchid', 'nthreads'))
+t_info <- left_join(t_info, clang_1t_times, by = c('benchid'))
+
+usms <- 1.0/1000.0
+uss <- usms/1000.0
+
+paper_plot_w <- 8
+paper_plot_w_narrow <- 4
+paper_plot_h <- 4
+paper_plot_h_narrow <- 3
+paper_font <- "serif"
+paper_pointsize <- 10
+paper_theme <- theme_light() +
+  theme(
+    plot.title=element_blank(),
+    legend.margin=margin(0,0,0,0,"cm"),
+    axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5),
+    strip.background = element_rect(fill = "#eeeeee", colour = "#aaaaaa"),
+    strip.text = element_text(colour = "#000000")
+  )
+set1_scale <- brewer_pal(palette="Set1")(24)
+set1_scale[6] <- "#3c009c"
+paper_disc_scale <- scale_color_manual(values = set1_scale)
+paper_fill_scale <- scale_fill_manual(values = set1_scale)
+paper_shape_scale <- scale_shape_manual(values = c(0,1,2,3,4,5,6,14))
+
+paper_plot_path <- paste0('plots/wasmbounds_', machine, '_')
+
+gplt <- NULL
+oplt <- NULL
+```
+
+## Timing
+
+### Relative vs Native-Clang
+#### 1 Thread
+```{r latency_rel_1t_motivation}
+# ymin = latency_us_q1*plot_scale, , ymax = latency_us_q3*plot_scale
+gplt <- ggplot(t_info %>% filter(benchname != 'noopbench', nthreads == 1, bounds == "Mprotect" | bounds == "No checks", runner == "V8"),
+    aes(x = benchname_fancy, group = runbounds, fill = bounds)) +
+  facet_grid(~suite_fancy, scales = "free_x", space = "free_x") +
+  paper_disc_scale + paper_fill_scale + paper_shape_scale + paper_theme +
+  theme(legend.position = "top") +
+  geom_col(aes(y = med_us / clang_us), position='dodge2') +
+  geom_hline(aes(yintercept = 0.0)) +
+  # scale_y_continuous(breaks = pretty_breaks(n=10)) +
+  labs(fill = "V8 Bounds checking") +
+  xlab("Benchmark") + ylab("Time vs native (Lower=Better)")
+
+if (!is.null(gplt)) {
+  pdf(paste0(paper_plot_path, "latency_relative_motivation_v8.pdf"), width=paper_plot_w, height=paper_plot_h, useDingbats = FALSE, family = paper_font, pointsize = paper_pointsize)
+  plot(gplt)
+  dev.off()
+}
+oplt <- gplt
+gplt <- NULL
+oplt
+```
+
+```{r latency_rel_1t}
+# ymin = latency_us_q1*plot_scale, , ymax = latency_us_q3*plot_scale
+gplt <- ggplot(t_info %>% filter(benchname != 'noopbench', nthreads == 1),
+    aes(x = benchname, group = runbounds, fill = runner, colour = bounds)) +
+  paper_disc_scale + paper_fill_scale + paper_shape_scale + paper_theme +
+  geom_col(aes(y = med_us / clang_us - 1), position='dodge') +
+  geom_errorbar(aes(ymax = q3_us / clang_us - 1, ymin = q1_us / clang_us - 1), position='dodge') +
+  geom_hline(aes(yintercept = 0.0)) +
+  scale_y_continuous(breaks = pretty_breaks(n=10)) +
+  labs(title = "Relative slowdown (Lower is better)", fill = "VM", colour = "Bounds\nchecking") +
+  xlab("Benchmark") + ylab("Relative slowdown (Lower=Better)")
+
+if (!is.null(gplt)) {
+  pdf(paste0(paper_plot_path, "latency_relative_1thread.pdf"), width=paper_plot_w, height=paper_plot_h, useDingbats = FALSE, family = paper_font, pointsize = paper_pointsize)
+  plot(gplt)
+  dev.off()
+}
+oplt <- gplt
+gplt <- NULL
+oplt
+```
+
+#### 16 Threads
+```{r latency_rel_16t}
+gplt <- ggplot(t_info %>% filter(benchname != 'noopbench', nthreads == 16),
+    aes(x = benchname, group = runbounds, fill = runner, colour = bounds)) +
+  paper_disc_scale + paper_fill_scale + paper_shape_scale + paper_theme +
+  geom_col(aes(y = med_us / clang_us - 1), position='dodge') +
+  geom_errorbar(aes(ymax = q3_us / clang_us - 1, ymin = q1_us / clang_us - 1), position='dodge') +
+  geom_hline(aes(yintercept = 0.0)) +
+  scale_y_continuous(breaks = pretty_breaks(n=10)) +
+  labs(title = "Relative slowdown (Lower is better)", fill = "VM", colour = "Bounds\nchecking") +
+  xlab("Benchmark") + ylab("Relative slowdown (Lower=Better)")
+
+if (!is.null(gplt)) {
+  pdf(paste0(paper_plot_path, "latency_relative_16thread.pdf"), width=24, height=6, useDingbats = FALSE, family = paper_font, pointsize = paper_pointsize)
+  plot(gplt)
+  dev.off()
+}
+oplt <- gplt
+gplt <- NULL
+oplt
+```
+
+#### Default bounds
+```{r latency_rel_1t_defbounds}
+# ymin = latency_us_q1*plot_scale, , ymax = latency_us_q3*plot_scale
+gplt <- ggplot(t_info %>% filter(benchname != 'noopbench', nthreads == 1, is_default_bounds),
+    aes(x = benchname, group = runbounds, fill = runner)) +
+  paper_disc_scale + paper_fill_scale + paper_shape_scale + paper_theme +
+  geom_col(aes(y = med_us / clang_us - 1), position='dodge2') +
+  geom_errorbar(aes(ymax = q3_us / clang_us - 1, ymin = q1_us / clang_us - 1), position = position_dodge2(width = 0.5, padding = 0.5)) +
+  geom_hline(aes(yintercept = 0.0)) +
+  scale_y_continuous(breaks = pretty_breaks(n=10)) +
+  labs(title = "Relative slowdown (Lower is better)", fill = "VM", colour = "Bounds\nchecking") +
+  xlab("Benchmark") + ylab("Relative slowdown (Lower=Better)")
+
+if (!is.null(gplt)) {
+  pdf(paste0(paper_plot_path, "latency_relative_1thread_defbounds.pdf"), width=paper_plot_w, height=paper_plot_h, useDingbats = FALSE, family = paper_font, pointsize = paper_pointsize)
+  plot(gplt)
+  dev.off()
+}
+oplt <- gplt
+gplt <- NULL
+oplt
+```
+
+#### Default bounds excluding wasm3
+```{r latency_rel_1t_defbounds_no_w3}
+# ymin = latency_us_q1*plot_scale, , ymax = latency_us_q3*plot_scale
+gplt <- ggplot(t_info %>% filter(benchname != 'noopbench', nthreads == 1, runner != 'W3', is_default_bounds),
+    aes(x = benchname, group = runbounds, fill = runner)) +
+  paper_disc_scale + paper_fill_scale + paper_shape_scale + paper_theme +
+  geom_col(aes(y = med_us / clang_us - 1), position='dodge2') +
+  geom_errorbar(aes(ymax = q3_us / clang_us - 1, ymin = q1_us / clang_us - 1), position = position_dodge2(width = 0.5, padding = 0.5)) +
+  geom_hline(aes(yintercept = 0.0)) +
+  scale_y_continuous(breaks = pretty_breaks(n=10)) +
+  labs(title = "Relative slowdown (Lower is better)", fill = "VM", colour = "Bounds\nchecking") +
+  xlab("Benchmark") + ylab("Relative slowdown (Lower=Better)")
+
+if (!is.null(gplt)) {
+  pdf(paste0(paper_plot_path, "latency_relative_1thread_defbounds_no_w3.pdf"), width=paper_plot_w, height=paper_plot_h, useDingbats = FALSE, family = paper_font, pointsize = paper_pointsize)
+  plot(gplt)
+  dev.off()
+}
+oplt <- gplt
+gplt <- NULL
+oplt
+```
+
+#### Default bounds excluding wasm3 - absolute values
+```{r latency_rel_1t_defbounds_no_w3_abs}
+gplt <- ggplot(t_info %>% filter(benchname != 'noopbench', nthreads == 1, runner != 'W3', bounds != 'Trap', bounds != 'Clamp', bounds != 'UFFD', (bounds != 'No checks') | (runner == LBL_NATIVE_CLANG) | (runner == LBL_NATIVE_GCC)),
+    aes(x = benchname, group = runbounds, fill = runner)) +
+  paper_disc_scale + paper_fill_scale + paper_shape_scale + paper_theme +
+  geom_col(aes(y = med_us), position='dodge2') +
+  geom_errorbar(aes(ymax = q3_us, ymin = q1_us), position = position_dodge2(width = 0.5, padding = 0.5)) +
+  geom_hline(aes(yintercept = 0.0)) +
+  scale_y_log10(breaks = log_breaks(n=10)) +
+  labs(title = "Microseconds", fill = "VM", colour = "Bounds\nchecking") +
+  xlab("Benchmark") + ylab("Microseconds")
+
+if (!is.null(gplt)) {
+  pdf(paste0(paper_plot_path, "latency_absolute_1thread_defbounds_no_w3.pdf"), width=paper_plot_w, height=paper_plot_h, useDingbats = FALSE, family = paper_font, pointsize = paper_pointsize)
+  plot(gplt)
+  dev.off()
+}
+oplt <- gplt
+gplt <- NULL
+oplt
+```
+
+
+```{r latency_rel_1t_defbounds_no_w3_abs_uffd}
+gplt <- ggplot(t_info %>% filter(benchname != 'noopbench', nthreads == 1, runner != 'W3', (bounds == 'UFFD') | (bounds == 'mprotect')),
+    aes(x = benchname, group = runbounds, fill = runner, color = bounds)) +
+  paper_disc_scale + paper_fill_scale + paper_shape_scale + paper_theme +
+  geom_col(aes(y = med_us), position='dodge2') +
+  geom_errorbar(aes(ymax = q3_us, ymin = q1_us), position = position_dodge2(width = 0.5, padding = 0.5)) +
+  geom_hline(aes(yintercept = 0.0)) +
+  scale_y_log10(breaks = log_breaks(n=10)) +
+  labs(title = "Microseconds", fill = "VM", colour = "Bounds\nchecking") +
+  xlab("Benchmark") + ylab("Microseconds")
+
+if (!is.null(gplt)) {
+  pdf(paste0(paper_plot_path, "latency_absolute_1thread_defbounds_no_w3_uffd.pdf"), width=paper_plot_w, height=paper_plot_h, useDingbats = FALSE, family = paper_font, pointsize = paper_pointsize)
+  plot(gplt)
+  dev.off()
+}
+oplt <- gplt
+gplt <- NULL
+oplt
+```
+
+```{r latency_rel_16t_defbounds_no_w3}
+gplt <- ggplot(t_info %>% filter(benchname != 'noopbench', nthreads == 16, runner != 'W3', bounds != 'Trap', bounds != 'Clamp', bounds != 'UFFD', (bounds != 'No checks') | (runner == LBL_NATIVE_CLANG) | (runner == LBL_NATIVE_GCC)),
+    aes(x = benchname, group = runbounds, fill = runner)) +
+  paper_disc_scale + paper_fill_scale + paper_shape_scale + paper_theme +
+  geom_col(aes(y = med_us), position='dodge2') +
+  geom_errorbar(aes(ymax = q3_us, ymin = q1_us), position = position_dodge2(width = 0.5, padding = 0.5)) +
+  geom_hline(aes(yintercept = 0.0)) +
+  scale_y_log10(breaks = log_breaks(n=10)) +
+  labs(title = "Microseconds", fill = "VM", colour = "Bounds\nchecking") +
+  xlab("Benchmark") + ylab("Microseconds")
+
+if (!is.null(gplt)) {
+  pdf(paste0(paper_plot_path, "latency_absolute_16thread_defbounds_no_w3.pdf"), width=paper_plot_w, height=paper_plot_h, useDingbats = FALSE, family = paper_font, pointsize = paper_pointsize)
+  plot(gplt)
+  dev.off()
+}
+oplt <- gplt
+gplt <- NULL
+oplt
+```
+
+### Method comparison (geom avg)
+#### 1 Thread Compact Motivation
+```{r latency_rel_method_1t_motivation}
+method_stats <- t_info %>% filter(benchname != 'noopbench', nthreads == 16, bounds == "Mprotect" | bounds == "No checks") %>%
+  group_by(runner, bounds, suite) %>% summarise(
+    slowdown = exp(mean(log(med_us / clang_us), na.rm = TRUE))
+  )
+stats_breaks = sort(method_stats$slowdown, decreasing=TRUE)
+gplt <- ggplot(method_stats,
+    aes(x = suite, fill = bounds, group = bounds, y = slowdown)) +
+  facet_grid(~runner, scales = "free_x", space = "free_x") +
+  paper_disc_scale + paper_fill_scale + paper_shape_scale + paper_theme +
+  theme(legend.position = "top") +
+  geom_col(position='dodge2', show.legend = TRUE) +
+  geom_hline(aes(yintercept = 1.0), linetype = "dashed", col = "#444444") +
+  scale_y_continuous(breaks = pretty_breaks(), expand=c(0.1, 0)) +
+  labs(fill = "Bounds checking mechanism") +
+  xlab("Benchmark") + ylab("Relative time (Lower=Better)")
+
+if (!is.null(gplt)) {
+  ggsave(paste0(paper_plot_path, "geomean_slowdown_motivation.pdf"), plot = gplt, onefile = FALSE, width=6, height=4, useDingbats = FALSE, family = paper_font, pointsize = paper_pointsize)
+}
+oplt <- gplt
+gplt <- NULL
+oplt
+```
+
+#### 1 Thread
+```{r latency_rel_method_1t}
+method_stats <- t_info %>% filter(benchname != 'noopbench', nthreads == 1) %>%
+  group_by(runner, bounds, suite) %>% summarise(
+    slowdown = exp(mean(log(med_us / clang_us), na.rm = TRUE))
+  )
+stats_breaks = sort(method_stats$slowdown, decreasing=TRUE)
+gplt <- ggplot(method_stats,
+    aes(x = interaction(suite, bounds), fill = bounds, group = bounds, y = slowdown)) +
+  facet_grid(~runner, scales = "free_x", space = "free_x") +
+  paper_disc_scale + paper_fill_scale + paper_shape_scale + paper_theme +
+  theme(strip.text.x = element_text(size = 6), strip.text.y = element_text(size = 5)) +
+  geom_col(position='dodge', show.legend = FALSE) +
+  geom_text(aes(label = sprintf("%.0f%%", slowdown*100), y = pmax(slowdown, 1)), size = 3, hjust = -0.1, vjust = 0.5, angle = 90, show.legend = FALSE) +
+  geom_hline(aes(yintercept = 1.0), linetype = "dashed", col = "#444444") +
+  scale_y_continuous(breaks = pretty_breaks(), expand=c(0.1, 0)) +
+  scale_y_break(c(stats_breaks[2] + 0.1, stats_breaks[1] - 0.3),
+      scales = 0.25, expand = expansion(add = c(0, 0.7)),
+      ticklabels = c(signif(stats_breaks[1], digits = 2))) +
+  labs(title = "Relative time (Lower is better)") +
+  xlab("Benchmark") + ylab("Relative time (Lower=Better)")
+
+if (!is.null(gplt)) {
+  width <- 6
+  if (machine == "riscv") {
+    width <- 3
+  }
+  ggsave(paste0(paper_plot_path, "geomean_slowdown_1thread.pdf"), plot = gplt, onefile = FALSE, width=width, height=paper_plot_h, useDingbats = FALSE, family = paper_font, pointsize = paper_pointsize)
+}
+oplt <- gplt
+gplt <- NULL
+oplt
+```
+
+#### 16 Threads
+```{r latency_rel_method_16t}
+method_stats <- t_info %>% filter(benchname != 'noopbench', nthreads == 16) %>%
+  group_by(runner, bounds, suite) %>% summarise(
+    slowdown = exp(mean(log(med_us / clang_us), na.rm = TRUE))
+  )
+stats_breaks = sort(method_stats$slowdown, decreasing=TRUE)
+gplt <- ggplot(method_stats,
+    aes(x = interaction(suite, bounds), fill = bounds, group = bounds, y = slowdown)) +
+  facet_grid(~runner, scales = "free_x", space = "free_x") +
+  paper_disc_scale + paper_fill_scale + paper_shape_scale + paper_theme +
+  geom_col(position='dodge', show.legend = FALSE) +
+  geom_text(aes(label = sprintf("%.2f%%", slowdown*100), y = pmax(slowdown, 1)), size = 2, hjust = 0.5, vjust = -0.5, show.legend = FALSE) +
+  geom_hline(aes(yintercept = 1.0), linetype = "dashed", col = "#444444") +
+  scale_y_continuous(breaks = pretty_breaks(), expand=c(0.1, 0)) +
+  scale_y_break(c(stats_breaks[2] + 0.1, stats_breaks[1] - 0.3),
+      scales = 0.25, expand = expansion(add = c(0, 0.5)),
+      ticklabels = c(signif(stats_breaks[1], digits = 3))) +
+  labs(title = "Relative time (Lower is better)") +
+  xlab("Benchmark") + ylab("Relative time (Lower=Better)")
+
+if (!is.null(gplt)) {
+  ggsave(paste0(paper_plot_path, "geomean_slowdown_16thread.pdf"), plot = gplt, onefile = FALSE, width=paper_plot_w, height=paper_plot_h, useDingbats = FALSE, family = paper_font, pointsize = paper_pointsize)
+}
+oplt <- gplt
+gplt <- NULL
+oplt
+```
+
+#### Thread scaling
+```{r latency_rel_t_scaling}
+method_stats <- t_info %>% filter(benchname != 'noopbench') %>%
+  group_by(runner, bounds, nthreads_f, suite) %>% summarise(slowdown = exp(mean(log(med_us / clang_1t_us), na.rm = TRUE)))
+# ymin = latency_us_q1*plot_scale, , ymax = latency_us_q3*plot_scale
+stats_breaks = sort(method_stats$slowdown, decreasing=TRUE)
+gplt <- ggplot(method_stats,
+    aes(x = interaction(suite, bounds), y = slowdown, group = nthreads_f)) +
+  facet_grid(~runner, scales = "free_x", space = "free_x") +
+  paper_disc_scale + paper_fill_scale + paper_shape_scale + paper_theme +
+  theme(legend.position = "top") +
+  geom_col(aes(fill = nthreads_f), position='dodge') +
+  geom_hline(aes(yintercept = 1.0)) +
+  scale_y_continuous(breaks = pretty_breaks(n=10)) +
+  scale_y_break(c(stats_breaks[4] + 0.1, stats_breaks[3] - 0.3),
+      scales = 0.25, expand = expansion(add = c(0, 0.5)),
+      ticklabels = c(signif(stats_breaks[1], digits = 2), signif(stats_breaks[3], digits = 2))) +
+  labs(title = "Relative slowdown (Lower is better)", fill="Threads") +
+  xlab("Benchmark") + ylab("Relative time vs native clang (Lower=Better)")
+
+if (!is.null(gplt)) {
+  ggsave(paste0(paper_plot_path, "geomean_slowdown_per_threads.pdf"), plot = gplt, onefile = FALSE, width=paper_plot_w, height=paper_plot_h, useDingbats = FALSE, family = paper_font, pointsize = paper_pointsize)
+}
+oplt <- gplt
+gplt <- NULL
+oplt
+```
+
+## VM comparison
+### Geometric average across all benchmarks for the default bounds checking method
+```{r vm_default_comp}
+vm_stats <- t_info %>% filter(benchname != 'noopbench', is_default_bounds == TRUE) %>%
+  group_by(runner, bounds, nthreads_f) %>% summarise(slowdown = exp(mean(log(med_us / clang_1t_us), na.rm = TRUE)))
+stats_breaks = sort(vm_stats$slowdown, decreasing=TRUE)
+# ymin = latency_us_q1*plot_scale, , ymax = latency_us_q3*plot_scale
+gplt <- ggplot(vm_stats,
+    aes(x = runner, y = slowdown, group = nthreads_f)) +
+  facet_grid(~runner, scales = "free_x", space = "free_x") +
+  paper_disc_scale + paper_fill_scale + paper_shape_scale + paper_theme +
+  geom_col(aes(fill = nthreads_f), position='dodge') +
+  geom_hline(aes(yintercept = 1.0)) +
+  scale_y_continuous(breaks = pretty_breaks(n=10)) +
+  scale_y_break(c(stats_breaks[4] + 0.1, stats_breaks[3] - 0.3),
+      scales = 0.25, expand = expansion(add = c(0, 0.5)),
+      ticklabels = c(signif(stats_breaks[1], digits = 3), signif(stats_breaks[2], digits = 3), signif(stats_breaks[3], digits = 3))) +
+  labs(title = "Relative slowdown (Lower is better)", fill="# of threads") +
+  xlab("Benchmark") + ylab("Geometric mean slowdown (Lower=Better)")
+
+if (!is.null(gplt)) {
+  pdf(paste0(paper_plot_path, "geomean_vm_speed_per_thread.pdf"), width=paper_plot_w, height=paper_plot_h, useDingbats = FALSE, family = paper_font, pointsize = paper_pointsize)
+  plot(gplt)
+  dev.off()
+}
+oplt <- gplt
+gplt <- NULL
+oplt
+```
+
+### Geometric average across all benchmarks for the default bounds checking method - 1 thread
+```{r vm_default_comp_1t}
+vm_stats <- t_info %>% filter(benchname != 'noopbench', is_default_bounds == TRUE, nthreads==1) %>%
+  group_by(runner, bounds, suite) %>% summarise(slowdown = exp(mean(log(med_us / clang_us), na.rm = TRUE)))
+stats_breaks = sort(vm_stats$slowdown, decreasing=TRUE)
+# ymin = latency_us_q1*plot_scale, , ymax = latency_us_q3*plot_scale
+gplt <- ggplot(vm_stats,
+    aes(x = interaction(runner, suite), y = slowdown, fill = runner)) +
+  facet_grid(~runner, scales = "free_x", space = "free_x") +
+  paper_disc_scale + paper_fill_scale + paper_shape_scale + paper_theme +
+  geom_col(position='dodge', show.legend = FALSE) +
+  geom_hline(aes(yintercept = 1.0)) +
+  scale_y_continuous(breaks = pretty_breaks(n=10), expand=c(0.1, 0)) +
+  scale_y_break(c(stats_breaks[2] + 0.1, stats_breaks[1] - 0.3),
+      scales = 0.25, expand = expansion(add = c(0, 0.5)),
+      ticklabels = c(signif(stats_breaks[1], digits = 3))) +
+  geom_text(aes(label = sprintf("%.2f%%", slowdown*100), y = pmax(slowdown, 1)), hjust = 0.5, vjust = -1, show.legend = FALSE, nudge_y = 0.01) +
+  labs(title = "Relative slowdown (Lower is better)", fill="# of threads") +
+  xlab("Benchmark") + ylab("Geometric mean slowdown (Lower=Better)")
+
+if (!is.null(gplt)) {
+  pdf(paste0(paper_plot_path, "geomean_vm_speed_per_thread_1t.pdf"), width=paper_plot_w_narrow, height=paper_plot_h_narrow, useDingbats = FALSE, family = paper_font, pointsize = paper_pointsize)
+  plot(gplt)
+  dev.off()
+}
+oplt <- gplt
+gplt <- NULL
+oplt
+```
+
+## CPU analysis
+
+### Load 1 thread
+```{r cpums_load}
+cpu_stats <- t_info %>% filter(benchname != 'noopbench', nthreads == 1) %>%
+  group_by(runner, bounds, suite) %>% summarise(cpupct = exp(mean(log(
+    1600.0*(local_cpums_user_sum + local_cpums_nice_sum + local_cpums_system_sum + local_cpums_irq_sum + local_cpums_softirq_sum)/(total_cpums)
+  ),na.rm=TRUE)))
+gplt <- ggplot(cpu_stats,
+    aes(x = interaction(suite, bounds), fill = bounds, group = bounds)) +
+  facet_grid(~runner, scales = "free_x", space = "free_x") +
+  paper_disc_scale + paper_fill_scale + paper_shape_scale + paper_theme +
+  geom_col(aes(y = cpupct), position = position_dodge2(preserve = "single"), show.legend = FALSE) +
+  geom_hline(yintercept = 0.0) +
+  geom_hline(yintercept = 100.0) +
+  scale_y_continuous(breaks = breaks_pretty(n=10), label = scales::label_comma(accuracy = 1)) +
+  labs(title = "CPU load", color = "% NDP", shape = "% NDP", linetype = "Node") +
+  xlab("VM Configuration") + ylab("CPU utilization (100%=1 core)")
+
+if (!is.null(gplt)) {
+  pdf(paste0(paper_plot_path, "cpu_load_mean_1t.pdf"), width=paper_plot_w, height=paper_plot_h, useDingbats = FALSE, family = paper_font, pointsize = paper_pointsize)
+  plot(gplt)
+  dev.off()
+}
+oplt <- gplt
+gplt <- NULL
+oplt
+```
+
+### Load 16 threads
+```{r cpums_load_16t}
+cpu_stats <- t_info %>% filter(benchname != 'noopbench', nthreads == 16) %>%
+  group_by(runner, bounds, suite) %>% summarise(cpupct = exp(mean(log(
+    1600.0*(local_cpums_user_sum + local_cpums_nice_sum + local_cpums_system_sum + local_cpums_irq_sum + local_cpums_softirq_sum)/(total_cpums)), na.rm=TRUE
+  )))
+gplt <- ggplot(cpu_stats,
+    aes(x = interaction(suite, bounds), fill = bounds, group = bounds)) +
+  facet_grid(~runner, scales = "free_x", space = "free_x") +
+  paper_disc_scale + paper_fill_scale + paper_shape_scale + paper_theme +
+  geom_col(aes(y = cpupct), position = position_dodge2(preserve = "single"), show.legend = FALSE) +
+  geom_hline(yintercept = 1600.0) +
+  geom_hline(yintercept = 100.0) +
+  geom_hline(yintercept = 0.0) +
+  scale_y_continuous(breaks = breaks_pretty(n=10), label = scales::label_comma(accuracy = 1)) +
+  labs(title = "CPU load", color = "% NDP", shape = "% NDP", linetype = "Node") +
+  xlab(element_blank()) + ylab("CPU utilisation (%)")
+
+if (!is.null(gplt)) {
+  pdf(paste0(paper_plot_path, "cpu_load_mean_16t.pdf"), width=paper_plot_w, height=paper_plot_h, useDingbats = FALSE, family = paper_font, pointsize = paper_pointsize)
+  plot(gplt)
+  dev.off()
+}
+oplt <- gplt
+gplt <- NULL
+oplt
+```
+
+### Load 1, 4 and 16 threads
+```{r cpums_load_pert}
+cpu_stats <- t_info %>% filter(benchname != 'noopbench') %>%
+  group_by(runner, bounds, suite, nthreads_f) %>% summarise(cpupct = exp(mean(log(
+    100.0*16.0*(local_cpums_user_sum + local_cpums_nice_sum + local_cpums_system_sum + local_cpums_irq_sum + local_cpums_softirq_sum)/(total_cpums)
+  ),na.rm = TRUE)))
+gplt <- ggplot(cpu_stats,
+    aes(x = interaction(suite, bounds), fill = nthreads_f, group = nthreads_f)) +
+  facet_grid(~runner, scales = "free_x", space = "free_x") +
+  paper_disc_scale + paper_fill_scale + paper_shape_scale + paper_theme +
+  geom_col(aes(y = cpupct), position = 'dodge') +
+  geom_hline(yintercept = 100.0) +
+  scale_y_continuous(breaks = breaks_pretty(n=10), label = scales::label_comma(accuracy = 1)) +
+  labs(title = "CPU load", fill="# of threads") +
+  xlab("VM Configuration") + ylab("CPU utilization (100%=all requestsed cores)")
+
+if (!is.null(gplt)) {
+  pdf(paste0(paper_plot_path, "cpu_load_mean_per_t.pdf"), width=paper_plot_w, height=paper_plot_h, useDingbats = FALSE, family = paper_font, pointsize = paper_pointsize)
+  plot(gplt)
+  dev.off()
+}
+oplt <- gplt
+gplt <- NULL
+oplt
+```
+
+
+### Kernel average RUNNING threads
+```{r plot_krunning}
+running_stats <- t_info %>% filter(benchname != 'noopbench') %>%
+  group_by(runner, bounds, nthreads_f) %>% summarise(runthreads = mean(
+    local_procs_running_avg, na.rm = TRUE
+  ))
+gplt <- ggplot(running_stats,
+    aes(x = bounds, fill = nthreads_f, group = nthreads_f)) +
+  facet_grid(~runner, scales = "free_x", space = "free_x") +
+  paper_disc_scale + paper_fill_scale + paper_shape_scale + paper_theme +
+  geom_col(aes(y = runthreads), position = 'dodge') +
+  geom_hline(yintercept = 1.0) +
+  scale_y_continuous(breaks = breaks_pretty(n=10), label = scales::label_comma(accuracy = 0.1)) +
+  labs(title = "CPU load", fill="# of threads") +
+  xlab("VM Configuration") + ylab("Kernel RUNNING threads per requested thread")
+
+if (!is.null(gplt)) {
+  pdf(paste0(paper_plot_path, "kernel_running_threads_per_nthreads.pdf"), width=paper_plot_w, height=paper_plot_h, useDingbats = FALSE, family = paper_font, pointsize = paper_pointsize)
+  plot(gplt)
+  dev.off()
+}
+oplt <- gplt
+gplt <- NULL
+oplt
+```
+
+### Context switches 1, 4 and 16 threads
+```{r plot_cpu_cswitches}
+cswitch_stats <- t_info %>% filter(benchname != 'noopbench') %>%
+  group_by(runner, bounds, nthreads_f, suite) %>% summarise(runthreads = exp(mean(log(
+    local_cswitches_sum * 1000 / total_cpums), na.rm = TRUE
+  )))
+gplt <- ggplot(cswitch_stats,
+    aes(x = interaction(suite, bounds), fill = nthreads_f, group = nthreads_f)) +
+  facet_grid(~runner, scales = "free_x", space = "free_x") +
+  paper_disc_scale + paper_fill_scale + paper_shape_scale + paper_theme +
+  theme(legend.position = "top") +
+  geom_col(aes(y = runthreads), position = 'dodge') +
+  scale_y_log10(label = scales::label_comma(accuracy = 1)) +
+  labs(title = "CPU load", fill = "Threads") +
+  xlab("VM Configuration") + ylab("Context switches per CPU second")
+
+if (!is.null(gplt)) {
+  pdf(paste0(paper_plot_path, "kernel_cswitches_per_s.pdf"), width=paper_plot_w, height=paper_plot_h, useDingbats = FALSE, family = paper_font, pointsize = paper_pointsize)
+  plot(gplt)
+  dev.off()
+}
+oplt <- gplt
+gplt <- NULL
+oplt
+```
+
+### CPU Migrations per CPU second
+```{r plot_cpu_migrations_per_s}
+migration_stats <- t_info %>% filter(benchname != 'noopbench') %>%
+  group_by(runner, bounds, suite) %>% summarise(runthreads = mean(
+    local_event_cpu_migrations_max * 1000 / total_cpums, na.rm=TRUE
+  ))
+gplt <- ggplot(migration_stats,
+    aes(x = bounds, fill = bounds, group = bounds, color = suite)) +
+  facet_grid(~runner, scales = "free_x", space = "free_x") +
+  paper_disc_scale + paper_fill_scale + paper_shape_scale + paper_theme +
+  geom_col(aes(y = runthreads), position = position_dodge2(preserve = "single")) +
+  scale_y_continuous(breaks = breaks_pretty(n=10), label = scales::label_comma(accuracy = 0.1)) +
+  labs(title = "CPU migrations", fill = "Bounds") +
+  xlab(element_blank()) + ylab("Migrations between CPUs per CPU second")
+
+if (!is.null(gplt)) {
+  pdf(paste0(paper_plot_path, "kernel_cpu_migrations_per_s.pdf"), width=paper_plot_w, height=paper_plot_h, useDingbats = FALSE, family = paper_font, pointsize = paper_pointsize)
+  plot(gplt)
+  dev.off()
+}
+oplt <- gplt
+gplt <- NULL
+oplt
+```
+
+### Average memory usage
+
+```{r plot_peak_mem}
+mem_stats <- t_info %>% filter(benchname != 'noopbench', nthreads == 1) %>%
+  group_by(runner, bounds, suite) %>% summarise(peakmem = exp(mean(log(
+    (as.double(local_mem_total - local_mem_available_avg)) / (1024*1024*1024)), na.rm=TRUE
+  )))
+gplt <- ggplot(mem_stats,
+    aes(x = interaction(suite, bounds), fill = bounds, group = bounds)) +
+  facet_grid(~runner, scales = "free_x", space = "free_x") +
+  paper_disc_scale + paper_fill_scale + paper_shape_scale + paper_theme +
+  theme(legend.position = "top") +
+  geom_col(aes(y = peakmem), position = position_dodge2(preserve = "single")) +
+  scale_y_log10(breaks = breaks_log(n=10)) +
+  labs(fill = "Bounds") +
+  xlab(element_blank()) + ylab("Average memory usage [GB]")
+
+if (!is.null(gplt)) {
+  pdf(paste0(paper_plot_path, "kernel_average_mem_use_polybenchc.pdf"), width=paper_plot_w, height=paper_plot_h, useDingbats = FALSE, family = paper_font, pointsize = paper_pointsize)
+  plot(gplt)
+  dev.off()
+}
+oplt <- gplt
+gplt <- NULL
+oplt
+```
+
+### CPU Counters
+
+```{r plot_cache_miss_rate}
+mem_stats <- t_info %>% filter(benchname != 'noopbench') %>%
+  group_by(runner, bounds, suite) %>% summarise(cpucnt = mean(
+    as.double(local_event_cache_accesses_max - local_event_cache_misses_max) / as.double(local_event_cache_accesses_max), na.rm=TRUE
+  ))
+gplt <- ggplot(mem_stats,
+    aes(x = bounds, fill = bounds, group = bounds, color = suite)) +
+  facet_grid(~runner, scales = "free_x", space = "free_x") +
+  paper_disc_scale + paper_fill_scale + paper_shape_scale + paper_theme +
+  geom_col(aes(y = cpucnt), position = position_dodge2(preserve = "single")) +
+  scale_y_continuous(breaks = breaks_pretty(n=10), label = scales::label_comma(accuracy = 0.01)) +
+  labs(title = "Cache hit rate", fill = "Bounds") +
+  xlab(element_blank()) + ylab("Cache hit rate")
+
+if (!is.null(gplt)) {
+  pdf(paste0(paper_plot_path, "perf_cache_hit_rate.pdf"), width=paper_plot_w, height=paper_plot_h, useDingbats = FALSE, family = paper_font, pointsize = paper_pointsize)
+  plot(gplt)
+  dev.off()
+}
+oplt <- gplt
+gplt <- NULL
+oplt
+```
+
+```{r plot_branch_hit_rate}
+mem_stats <- t_info %>% filter(benchname != 'noopbench') %>%
+  group_by(runner, bounds, suite) %>% summarise(cpucnt = mean(
+    as.double(local_event_branches_max - local_event_branch_misses_max) / as.double(local_event_branches_max), na.rm=TRUE
+  ))
+gplt <- ggplot(mem_stats,
+    aes(x = bounds, fill = bounds, group = bounds, color = suite)) +
+  facet_grid(~runner, scales = "free_x", space = "free_x") +
+  coord_cartesian(ylim = c(0.9, 1)) +
+  paper_disc_scale + paper_fill_scale + paper_shape_scale + paper_theme +
+  geom_col(aes(y = cpucnt), position = position_dodge2(preserve = "single")) +
+  scale_y_continuous(breaks = breaks_pretty(n=10), label = scales::label_comma(accuracy = 0.01)) +
+  labs(title = "Branch prediction rate", fill = "Bounds") +
+  xlab(element_blank()) + ylab("Branch prediction rate")
+
+if (!is.null(gplt)) {
+  pdf(paste0(paper_plot_path, "perf_branch_hit_rate.pdf"), width=paper_plot_w, height=paper_plot_h, useDingbats = FALSE, family = paper_font, pointsize = paper_pointsize)
+  plot(gplt)
+  dev.off()
+}
+oplt <- gplt
+gplt <- NULL
+oplt
+```
+
+```{r plot_cpi}
+mem_stats <- t_info %>% filter(benchname != 'noopbench') %>%
+  group_by(runner, bounds, suite) %>% summarise(cpucnt = mean(
+    as.double(local_event_cycles_max) / as.double(local_event_instructions_max), na.rm=TRUE
+  ))
+gplt <- ggplot(mem_stats,
+    aes(x = bounds, fill = bounds, group = bounds, color = suite)) +
+  facet_grid(~runner, scales = "free_x", space = "free_x") +
+  paper_disc_scale + paper_fill_scale + paper_shape_scale + paper_theme +
+  geom_col(aes(y = cpucnt), position = position_dodge2(preserve = "single")) +
+  scale_y_continuous(breaks = breaks_pretty(n=10), label = scales::label_comma(accuracy = 0.01)) +
+  labs(fill = "Bounds") +
+  xlab(element_blank()) + ylab("CPI")
+
+if (!is.null(gplt)) {
+  pdf(paste0(paper_plot_path, "perf_cpi.pdf"), width=paper_plot_w, height=paper_plot_h, useDingbats = FALSE, family = paper_font, pointsize = paper_pointsize)
+  plot(gplt)
+  dev.off()
+}
+oplt <- gplt
+gplt <- NULL
+oplt
+```
+
+```{r plot_pagefaults}
+mem_stats <- t_info %>% filter(benchname != 'noopbench') %>%
+  group_by(runner, bounds, suite) %>% summarise(cpucnt = mean(
+    as.double(local_event_page_faults_max) * 1000 / total_cpums, na.rm=TRUE
+  ))
+gplt <- ggplot(mem_stats,
+    aes(x = bounds, fill = bounds, group = bounds, color = suite)) +
+  facet_grid(~runner, scales = "free_x", space = "free_x") +
+  paper_disc_scale + paper_fill_scale + paper_shape_scale + paper_theme +
+  geom_col(aes(y = cpucnt), position = position_dodge2(preserve = "single")) +
+  scale_y_continuous(breaks = breaks_pretty(n=10), label = scales::label_comma(accuracy = 0.01)) +
+  labs(fill = "Bounds") +
+  xlab(element_blank()) + ylab("Page faults / second")
+
+if (!is.null(gplt)) {
+  pdf(paste0(paper_plot_path, "perf_pagefaults.pdf"), width=paper_plot_w, height=paper_plot_h, useDingbats = FALSE, family = paper_font, pointsize = paper_pointsize)
+  plot(gplt)
+  dev.off()
+}
+oplt <- gplt
+gplt <- NULL
+oplt
+```
+
+```{r plot_tlb_hit_rate}
+mem_stats <- t_info %>% filter(benchname != 'noopbench') %>%
+  group_by(runner, bounds, suite) %>% summarise(cpucnt = mean(
+    as.double(local_event_dtlb_accesses_max + local_event_itlb_accesses_max - local_event_dtlb_misses_max - local_event_itlb_misses_max)
+      /
+    as.double(local_event_dtlb_accesses_max + local_event_itlb_accesses_max), na.rm=TRUE
+  ))
+gplt <- ggplot(mem_stats,
+    aes(x = bounds, fill = bounds, group = bounds, color = suite)) +
+  facet_grid(~runner, scales = "free_x", space = "free_x") +
+  coord_cartesian(ylim = c(0.9, 1)) +
+  paper_disc_scale + paper_fill_scale + paper_shape_scale + paper_theme +
+  geom_col(aes(y = cpucnt), position = position_dodge2(preserve = "single")) +
+  scale_y_continuous(breaks = breaks_pretty(n=10), label = scales::label_comma(accuracy = 0.01)) +
+  labs(fill = "Bounds") +
+  xlab(element_blank()) + ylab("TLB hit rate")
+
+if (!is.null(gplt)) {
+  pdf(paste0(paper_plot_path, "perf_tlb_hit_rate.pdf"), width=paper_plot_w, height=paper_plot_h, useDingbats = FALSE, family = paper_font, pointsize = paper_pointsize)
+  plot(gplt)
+  dev.off()
+}
+oplt <- gplt
+gplt <- NULL
+oplt
+```
+
+```{r plot_instructions}
+mem_stats <- t_info %>% filter(benchname != 'noopbench') %>%
+  group_by(runner, bounds, suite) %>% summarise(cpucnt = mean(
+    as.double(local_event_instructions_max), na.rm=TRUE
+  ))
+gplt <- ggplot(mem_stats,
+    aes(x = bounds, fill = bounds, group = bounds, color = suite)) +
+  facet_grid(~runner, scales = "free_x", space = "free_x") +
+  paper_disc_scale + paper_fill_scale + paper_shape_scale + paper_theme +
+  geom_col(aes(y = cpucnt), position = position_dodge2(preserve = "single")) +
+  scale_y_log10(breaks = log_breaks(n=10)) +
+  labs(fill = "Bounds") +
+  xlab(element_blank()) + ylab("Instructions")
+
+if (!is.null(gplt)) {
+  pdf(paste0(paper_plot_path, "perf_instructions.pdf"), width=paper_plot_w, height=paper_plot_h, useDingbats = FALSE, family = paper_font, pointsize = paper_pointsize)
+  plot(gplt)
+  dev.off()
+}
+oplt <- gplt
+gplt <- NULL
+oplt
+```

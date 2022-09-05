@@ -1,0 +1,16 @@
+FROM wasmbounds-toolchain-base:latest AS builder
+
+WORKDIR /opt/wasmbounds-src
+COPY . .
+RUN mkdir -p /opt/wasmbounds-src/runner-build/docker
+RUN mkdir -p /opt/wasmbounds
+RUN cmake --preset docker
+RUN cmake --build --preset release-docker
+RUN cmake --build --preset release-docker --target install
+
+FROM wasmbounds-runtime-base:latest
+
+WORKDIR /opt
+COPY --from=builder /opt/wasmbounds /opt/wasmbounds
+WORKDIR /opt/wasmbounds/bin
+CMD ["/usr/bin/bash"]
