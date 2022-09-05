@@ -1,0 +1,23 @@
+test run
+target aarch64
+target arm
+target s390x
+target x86_64
+
+function %uextend() -> b1 {
+block0:
+    v0 = iconst.i32 0xffff_ee00
+    v1 = uextend.i64 v0
+    v2 = icmp_imm eq v1, 0xffff_ee00
+    return v2
+}
+; run
+
+function %sextend() -> b1 {
+block0:
+    v0 = iconst.i32 0xffff_ee00
+    v1 = sextend.i64 v0
+    v2 = icmp_imm eq v1, 0xffff_ffff_ffff_ee00
+    return v2
+}
+; run
