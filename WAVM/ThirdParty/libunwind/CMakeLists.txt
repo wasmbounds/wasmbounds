@@ -1,16 +1,19 @@
 set(Sources
 	src/AddressSpace.hpp
 	src/assembly.h
+	src/cet_unwind.h
 	src/CompactUnwinder.hpp
 	src/config.h
 	src/dwarf2.h
 	src/DwarfInstructions.hpp
 	src/DwarfParser.hpp
 	src/EHHeaderParser.hpp
+	src/FrameHeaderCache.hpp
 	src/libunwind_ext.h
 	src/libunwind.cpp
 	src/Registers.hpp
 	src/RWMutex.hpp
+	src/Unwind-seh.cpp
 	src/Unwind-sjlj.c
 	src/UnwindCursor.hpp
 	src/UnwindLevel1-gcc-ext.c
@@ -38,7 +41,7 @@ else()
 	if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
 		set(Sources ${Sources} ${AppleSources})
 	endif()
-	
+
 	set(UNWIND_COMPILER_OPTIONS)
 	if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
 		list(APPEND UNWIND_COMPILER_OPTIONS "-Wno-maybe-uninitialized" "-Wno-unused-but-set-variable")
