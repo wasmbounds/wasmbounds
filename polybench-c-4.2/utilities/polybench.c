@@ -16,7 +16,9 @@
 #include <assert.h>
 #include <time.h>
 #include <sys/time.h>
+#ifndef __wasi__
 #include <sys/resource.h>
+#endif
 #include <sched.h>
 #include <math.h>
 #ifdef _OPENMP
