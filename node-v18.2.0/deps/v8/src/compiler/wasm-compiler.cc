@@ -66,6 +66,9 @@
 
 namespace v8 {
 namespace internal {
+
+BoundsCheckingCode v8BoundsCheckingCode = BoundsCheckingCode::trapIfNeeded;
+
 namespace compiler {
 
 namespace {
@@ -3839,6 +3842,9 @@ WasmGraphBuilder::BoundsCheckMem(uint8_t access_size, Node* index,
 
   // If no bounds checks should be performed (for testing), just return the
   // converted index and assume it to be in-bounds.
+  if (v8BoundsCheckingCode == BoundsCheckingCode::none) {
+    return {index, kInBounds};
+  }
   if (env_->bounds_checks == wasm::kNoBoundsChecks) return {index, kInBounds};
 
   // The accessed memory is [index + offset, index + end_offset].
@@ -3861,7 +3867,7 @@ WasmGraphBuilder::BoundsCheckMem(uint8_t access_size, Node* index,
   }
 
   if (env_->bounds_checks == wasm::kTrapHandler &&
-      enforce_check == kCanOmitBoundsCheck) {
+      enforce_check == kCanOmitBoundsCheck && v8BoundsCheckingCode == BoundsCheckingCode::trapIfNeeded) {
     return {index, kTrapHandler};
   }
 
@@ -3879,6 +3885,10 @@ WasmGraphBuilder::BoundsCheckMem(uint8_t access_size, Node* index,
 
   // Introduce the actual bounds check.
   Node* cond = gasm_->UintLessThan(index, effective_size);
+  if (v8BoundsCheckingCode == BoundsCheckingCode::alwaysClamp) {
+    return {Select(cond, index, effective_size, (mcgraph()->machine()->Is32()) ? wasm::kWasmI32 : wasm::kWasmI64), kDynamicallyChecked};
+  }
+
   TrapIfFalse(wasm::kTrapMemOutOfBounds, cond, position);
   return {index, kDynamicallyChecked};
 }

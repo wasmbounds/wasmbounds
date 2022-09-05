@@ -12,6 +12,8 @@
 #include "src/base/optional.h"
 #include "src/handles/handles.h"
 
+#include "src/vm-library/wasmbounds_rr.hpp"
+
 namespace v8 {
 namespace internal {
 

@@ -28,6 +28,8 @@
 namespace v8 {
 namespace internal {
 
+V8_EXPORT_PRIVATE IResizableRegionAllocator* v8RRA = nullptr;
+
 namespace {
 
 #if V8_ENABLE_WEBASSEMBLY
@@ -242,8 +244,9 @@ BackingStore::~BackingStore() {
         GetReservedRegion(has_guard_regions_, buffer_start_, byte_capacity_);
 
     if (!region.is_empty()) {
-      FreePages(page_allocator, reinterpret_cast<void*>(region.begin()),
-                region.size());
+      // FreePages(page_allocator, reinterpret_cast<void*>(region.begin()),
+      //           region.size());
+      v8RRA->freeRegion(reinterpret_cast<uint8_t*>(region.begin()), region.size());
     }
     Clear();
     return;
@@ -428,9 +431,9 @@ std::unique_ptr<BackingStore> BackingStore::TryAllocateAndPartiallyCommitMemory(
   auto allocate_pages = [&] {
 #ifdef V8_SANDBOX
     page_allocator = GetSandboxPageAllocator();
-    allocation_base = AllocatePages(page_allocator, nullptr, reservation_size,
-                                    page_size, PageAllocator::kNoAccess);
-    if (allocation_base) return true;
+    // allocation_base = AllocatePages(page_allocator, nullptr, reservation_size,
+    //                                 page_size, PageAllocator::kNoAccess);
+    // if (allocation_base) return true;
     // We currently still allow falling back to the platform page allocator if
     // the sandbox page allocator fails. This will eventually be removed.
     // TODO(chromium:1218005) once we forbid the fallback, we should have a
@@ -440,8 +443,9 @@ std::unique_ptr<BackingStore> BackingStore::TryAllocateAndPartiallyCommitMemory(
     if (!kAllowBackingStoresOutsideSandbox) return false;
     page_allocator = GetPlatformPageAllocator();
 #endif
-    allocation_base = AllocatePages(page_allocator, nullptr, reservation_size,
-                                    page_size, PageAllocator::kNoAccess);
+    // allocation_base = AllocatePages(page_allocator, nullptr, reservation_size,
+    //                                 page_size, PageAllocator::kNoAccess);
+    allocation_base = v8RRA->allocateRegion(0, reservation_size);
     return allocation_base != nullptr;
   };
   if (!gc_retry(allocate_pages)) {
@@ -467,9 +471,11 @@ std::unique_ptr<BackingStore> BackingStore::TryAllocateAndPartiallyCommitMemory(
   //--------------------------------------------------------------------------
   size_t committed_byte_length = initial_pages * page_size;
   auto commit_memory = [&] {
-    return committed_byte_length == 0 ||
-           SetPermissions(page_allocator, buffer_start, committed_byte_length,
-                          PageAllocator::kReadWrite);
+    v8RRA->resizeRegion((uint8_t*)allocation_base, 0, committed_byte_length + (guards ? kNegativeGuardSize : 0));
+    return true;
+    // return committed_byte_length == 0 ||
+    //        SetPermissions(page_allocator, buffer_start, committed_byte_length,
+    //                       PageAllocator::kReadWrite);
   };
   if (!gc_retry(commit_memory)) {
     TRACE_BS("BSw:try   failed to set permissions (%p, %zu)\n", buffer_start,
@@ -621,10 +627,12 @@ base::Optional<size_t> BackingStore::GrowWasmMemoryInPlace(Isolate* isolate,
     new_length = (current_pages + delta_pages) * wasm::kWasmPageSize;
 
     // Try to adjust the permissions on the memory.
-    if (!i::SetPermissions(GetPlatformPageAllocator(), buffer_start_,
-                           new_length, PageAllocator::kReadWrite)) {
-      return {};
-    }
+    // if (!i::SetPermissions(GetPlatformPageAllocator(), buffer_start_,
+    //                        new_length, PageAllocator::kReadWrite)) {
+    //   return {};
+    // }
+    size_t nGuard = has_guard_regions_ ? kNegativeGuardSize : 0;
+    v8RRA->resizeRegion((uint8_t*)buffer_start_ - nGuard, old_length, new_length);
     if (byte_length_.compare_exchange_weak(old_length, new_length,
                                            std::memory_order_acq_rel)) {
       // Successfully updated both the length and permissions.

@@ -13,6 +13,8 @@
 #include "v8-version.h"  // NOLINT(build/include_directory)
 #include "v8config.h"    // NOLINT(build/include_directory)
 
+struct IResizableRegionAllocator;
+
 namespace v8 {
 
 class Array;
@@ -23,6 +25,15 @@ template <typename T>
 class Local;
 
 namespace internal {
+
+extern IResizableRegionAllocator* v8RRA;
+enum class BoundsCheckingCode {
+  none,
+  alwaysTrap,
+  alwaysClamp,
+  trapIfNeeded
+};
+extern BoundsCheckingCode v8BoundsCheckingCode;
 
 class Isolate;
 
