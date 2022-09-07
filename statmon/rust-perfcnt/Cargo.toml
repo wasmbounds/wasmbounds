@@ -1,0 +1,34 @@
+[package]
+name = "perfcnt"
+version = "0.7.3"
+authors = ["Gerd Zellweger <mail@gerdzellweger.com>", "Brian Martin <bmartin@twitter.com>", "Jens Breitbart <jbreitbart@gmail.com>", "Marshall Pierce <marshall@mpierce.org>"]
+description = "Library to configure and read hardware performance counters in rust."
+homepage = "https://github.com/gz/rust-perfcnt"
+repository = "https://github.com/gz/rust-perfcnt"
+documentation = "http://gz.github.io/rust-perfcnt/perfcnt/"
+readme = "README.md"
+keywords = ["performance", "counter", "events", "pmu", "perf"]
+license = "MIT"
+edition = '2018'
+
+[target.'cfg(any(target_arch = "x86", target_arch = "x86_64"))'.dependencies.x86]
+version = "0.49.0"
+features = ["performance-counter"]
+
+[dependencies]
+bitflags = "1.2.1"
+libc = "0.2"
+mmap = "0.1.*"
+nom = "4.2.3"
+
+[[bin]]
+name = "perfcnt-list"
+path = "src/bin/list.rs"
+
+[[bin]]
+name = "perfcnt-parse"
+path = "src/bin/parse.rs"
+
+[[bin]]
+name = "perfcnt-stats"
+path = "src/bin/stats.rs"
