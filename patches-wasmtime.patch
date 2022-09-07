@@ -1,0 +1,787 @@
+diff --git a/wasmtime/.gitattributes b/wasmtime/.gitattributes
+index abbcc836..b77ea5b1 100644
+--- a/wasmtime/.gitattributes
++++ b/wasmtime/.gitattributes
+@@ -1,5 +1,4 @@
+ # Use LF-style line endings for all text files.
+-* text=auto eol=lf
+ 
+ # Older git versions try to fix line endings on images, this prevents it.
+ *.png binary
+diff --git a/wasmtime/cranelift/codegen/src/legalizer/heap.rs b/wasmtime/cranelift/codegen/src/legalizer/heap.rs
+index 91ae3da3..4badf9d3 100644
+--- a/wasmtime/cranelift/codegen/src/legalizer/heap.rs
++++ b/wasmtime/cranelift/codegen/src/legalizer/heap.rs
+@@ -59,8 +59,10 @@ fn dynamic_addr(
+     let mut pos = FuncCursor::new(func).at_inst(inst);
+     pos.use_srcloc(inst);
+ 
+-    let offset = cast_offset_to_pointer_ty(offset, offset_ty, addr_ty, &mut pos);
++    let mut offset = cast_offset_to_pointer_ty(offset, offset_ty, addr_ty, &mut pos);
+ 
++    use crate::BoundsTranslationMode;
++    let bmode = crate::get_bounds_translation_mode();
+     // Start with the bounds check. Trap if `offset + access_size > bound`.
+     let bound = pos.ins().global_value(addr_ty, bound_gv);
+     let (cc, lhs, bound) = if access_size == 1 {
+@@ -75,15 +77,27 @@ fn dynamic_addr(
+         // We need an overflow check for the adjusted offset.
+         let access_size_val = pos.ins().iconst(addr_ty, access_size as i64);
+         let (adj_offset, overflow) = pos.ins().iadd_ifcout(offset, access_size_val);
+-        pos.ins().trapif(
+-            isa.unsigned_add_overflow_condition(),
+-            overflow,
+-            ir::TrapCode::HeapOutOfBounds,
+-        );
++        if bmode != BoundsTranslationMode::None {
++            pos.ins().trapif(
++                isa.unsigned_add_overflow_condition(),
++                overflow,
++                ir::TrapCode::HeapOutOfBounds,
++            );
++        }
+         (IntCC::UnsignedGreaterThan, adj_offset, bound)
+     };
+-    let oob = pos.ins().icmp(cc, lhs, bound);
+-    pos.ins().trapnz(oob, ir::TrapCode::HeapOutOfBounds);
++    match bmode {
++        BoundsTranslationMode::None => {}
++        BoundsTranslationMode::Clamp => {
++            let oob = pos.ins().icmp(cc, lhs, bound);
++            offset = pos.ins().select(oob, bound, lhs);
++        }
++        BoundsTranslationMode::Trap => {
++            let oob = pos.ins().icmp(cc, lhs, bound);
++            pos.ins().trapnz(oob, ir::TrapCode::HeapOutOfBounds);
++        }
++        BoundsTranslationMode::ProtectedMemory => {}
++    }
+ 
+     let spectre_oob_comparison = if isa.flags().enable_heap_access_spectre_mitigation() {
+         Some((cc, lhs, bound))
+@@ -118,6 +132,9 @@ fn static_addr(
+     let mut pos = FuncCursor::new(func).at_inst(inst);
+     pos.use_srcloc(inst);
+ 
++    use crate::BoundsTranslationMode;
++    let bmode = crate::get_bounds_translation_mode();
++
+     // The goal here is to trap if `offset + access_size > bound`.
+     //
+     // This first case is a trivial case where we can easily trap.
+@@ -172,8 +189,19 @@ fn static_addr(
+             let limit = limit as i64;
+             (IntCC::UnsignedGreaterThan, offset, limit)
+         };
+-        let oob = pos.ins().icmp_imm(cc, lhs, limit_imm);
+-        pos.ins().trapnz(oob, ir::TrapCode::HeapOutOfBounds);
++        match bmode {
++            BoundsTranslationMode::None => {}
++            BoundsTranslationMode::Clamp => {
++                let oob = pos.ins().icmp_imm(cc, lhs, limit_imm);
++                let limit_v = pos.ins().iconst(addr_ty, limit_imm);
++                offset = pos.ins().select(oob, limit_v, lhs);
++            }
++            BoundsTranslationMode::Trap => {
++                let oob = pos.ins().icmp_imm(cc, lhs, limit_imm);
++                pos.ins().trapnz(oob, ir::TrapCode::HeapOutOfBounds);
++            }
++            BoundsTranslationMode::ProtectedMemory => {}
++        }
+         if isa.flags().enable_heap_access_spectre_mitigation() {
+             let limit = pos.ins().iconst(addr_ty, limit_imm);
+             spectre_oob_comparison = Some((cc, lhs, limit));
+diff --git a/wasmtime/cranelift/codegen/src/lib.rs b/wasmtime/cranelift/codegen/src/lib.rs
+index 3d5ca200..c5cd0bc5 100644
+--- a/wasmtime/cranelift/codegen/src/lib.rs
++++ b/wasmtime/cranelift/codegen/src/lib.rs
+@@ -117,3 +117,33 @@ mod souper_harvest;
+ pub use crate::result::{CodegenError, CodegenResult};
+ 
+ include!(concat!(env!("OUT_DIR"), "/version.rs"));
++
++/// Bounds checking mechanism
++#[repr(i32)]
++#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
++pub enum BoundsTranslationMode {
++    ///
++    ProtectedMemory = 0,
++    ///
++    None = 1,
++    ///
++    Clamp = 2,
++    ///
++    Trap = 3,
++}
++
++static BOUNDS_TRANSLATION_MODE: core::sync::atomic::AtomicI32 =
++    core::sync::atomic::AtomicI32::new(0);
++
++/// Get bounds checking mode
++pub fn get_bounds_translation_mode() -> BoundsTranslationMode {
++    unsafe {
++        core::mem::transmute(BOUNDS_TRANSLATION_MODE.load(core::sync::atomic::Ordering::Acquire))
++    }
++}
++
++/// Sets bounds checking translation mode for all future compilations
++#[no_mangle]
++pub extern "C" fn set_wasmtime_bounds_translation_mode(mode: i32) {
++    BOUNDS_TRANSLATION_MODE.store(mode, core::sync::atomic::Ordering::Release)
++}
+diff --git a/wasmtime/cranelift/wasm/src/lib.rs b/wasmtime/cranelift/wasm/src/lib.rs
+index a9823681..53d1313e 100644
+--- a/wasmtime/cranelift/wasm/src/lib.rs
++++ b/wasmtime/cranelift/wasm/src/lib.rs
+@@ -35,6 +35,7 @@ extern crate alloc as std;
+ #[macro_use]
+ extern crate std;
+ 
++use core::ops::Bound;
+ #[cfg(not(feature = "std"))]
+ use hashbrown::{
+     hash_map,
+diff --git a/wasmtime/crates/c-api/Cargo.toml b/wasmtime/crates/c-api/Cargo.toml
+index 5eac1f78..4d70118b 100644
+--- a/wasmtime/crates/c-api/Cargo.toml
++++ b/wasmtime/crates/c-api/Cargo.toml
+@@ -11,7 +11,7 @@ publish = false
+ 
+ [lib]
+ name = "wasmtime"
+-crate-type = ["staticlib", "cdylib"]
++crate-type = ["staticlib"]
+ doc = false
+ test = false
+ doctest = false
+diff --git a/wasmtime/crates/c-api/include/wasmtime/memory.h b/wasmtime/crates/c-api/include/wasmtime/memory.h
+index 6aecbaff..d2161105 100644
+--- a/wasmtime/crates/c-api/include/wasmtime/memory.h
++++ b/wasmtime/crates/c-api/include/wasmtime/memory.h
+@@ -116,6 +116,25 @@ WASM_API_EXTERN wasmtime_error_t *wasmtime_memory_grow(
+     uint64_t *prev_size
+ );
+ 
++/**
++ * \brief Attempts to shrink the specified memory by `delta` pages.
++ *
++ * \param store the store that owns `memory`
++ * \param memory the memory to shrink
++ * \param delta the number of pages to shrink by
++ * \param prev_size where to store the previous size of memory
++ *
++ * If memory cannot be shrunk then `prev_size` is left unchanged and an error is
++ * returned. Otherwise `prev_size` is set to the previous size of the memory, in
++ * WebAssembly pages, and `NULL` is returned.
++ */
++WASM_API_EXTERN wasmtime_error_t *wasmtime_memory_shrink(
++    wasmtime_context_t *store,
++    const wasmtime_memory_t *memory,
++    uint64_t delta,
++    uint64_t *prev_size
++);
++
+ #ifdef __cplusplus
+ }  // extern "C"
+ #endif
+diff --git a/wasmtime/crates/c-api/src/memory.rs b/wasmtime/crates/c-api/src/memory.rs
+index 299dbae7..3bc8f79e 100644
+--- a/wasmtime/crates/c-api/src/memory.rs
++++ b/wasmtime/crates/c-api/src/memory.rs
+@@ -127,3 +127,13 @@ pub extern "C" fn wasmtime_memory_grow(
+ ) -> Option<Box<wasmtime_error_t>> {
+     handle_result(mem.grow(store, delta), |prev| *prev_size = prev)
+ }
++
++#[no_mangle]
++pub extern "C" fn wasmtime_memory_shrink(
++    store: CStoreContextMut<'_>,
++    mem: &Memory,
++    delta: u64,
++    prev_size: &mut u64,
++) -> Option<Box<wasmtime_error_t>> {
++    handle_result(mem.shrink(store, delta), |prev| *prev_size = prev)
++}
+diff --git a/wasmtime/crates/runtime/src/instance.rs b/wasmtime/crates/runtime/src/instance.rs
+index 81548f26..e216c728 100644
+--- a/wasmtime/crates/runtime/src/instance.rs
++++ b/wasmtime/crates/runtime/src/instance.rs
+@@ -417,6 +417,40 @@ impl Instance {
+         result
+     }
+ 
++    /// Shrink memory by the specified amount of pages.
++    ///
++    /// Returns `None` if memory can't be shrunk by the specified amount
++    /// of pages. Returns `Some` with the old size in bytes if shrinkage was
++    /// successful.
++    pub(crate) fn memory_shrink(
++        &mut self,
++        index: MemoryIndex,
++        delta: u64,
++    ) -> Result<Option<usize>, Error> {
++        let (idx, instance) = if let Some(idx) = self.module.defined_memory_index(index) {
++            (idx, self)
++        } else {
++            let import = self.imported_memory(index);
++            unsafe {
++                let foreign_instance = (*import.vmctx).instance_mut();
++                let foreign_memory_def = &*import.from;
++                let foreign_memory_index = foreign_instance.memory_index(foreign_memory_def);
++                (foreign_memory_index, foreign_instance)
++            }
++        };
++        let store = unsafe { &mut *instance.store() };
++        let memory = &mut instance.memories[idx];
++
++        let result = unsafe { memory.shrink(delta, store) };
++        let vmmemory = memory.vmmemory();
++
++        // Update the state used by wasm code in case the base pointer and/or
++        // the length changed.
++        instance.set_memory(idx, vmmemory);
++
++        result
++    }
++
+     pub(crate) fn table_element_type(&mut self, table_index: TableIndex) -> TableElementType {
+         unsafe { (*self.get_table(table_index)).element_type() }
+     }
+diff --git a/wasmtime/crates/runtime/src/lib.rs b/wasmtime/crates/runtime/src/lib.rs
+index 9f41e361..939e4b16 100644
+--- a/wasmtime/crates/runtime/src/lib.rs
++++ b/wasmtime/crates/runtime/src/lib.rs
+@@ -35,6 +35,7 @@ mod mmap;
+ mod table;
+ mod traphandlers;
+ mod vmcontext;
++pub mod wasmbounds_hooks;
+ 
+ pub mod debug_builtins;
+ pub mod libcalls;
+@@ -67,14 +68,14 @@ pub use crate::vmcontext::{
+ mod module_id;
+ pub use module_id::{CompiledModuleId, CompiledModuleIdAllocator};
+ 
+-#[cfg(memfd)]
+-mod memfd;
+-#[cfg(memfd)]
+-pub use crate::memfd::{MemFdSlot, MemoryMemFd, ModuleMemFds};
++// #[cfg(memfd)]
++// mod memfd;
++// #[cfg(memfd)]
++// pub use crate::memfd::{MemFdSlot, MemoryMemFd, ModuleMemFds};
+ 
+-#[cfg(not(memfd))]
++// #[cfg(not(memfd))]
+ mod memfd_disabled;
+-#[cfg(not(memfd))]
++// #[cfg(not(memfd))]
+ pub use crate::memfd_disabled::{MemFdSlot, MemoryMemFd, ModuleMemFds};
+ 
+ /// Version number of this crate.
+diff --git a/wasmtime/crates/runtime/src/memory.rs b/wasmtime/crates/runtime/src/memory.rs
+index 932ecff4..3da9767c 100644
+--- a/wasmtime/crates/runtime/src/memory.rs
++++ b/wasmtime/crates/runtime/src/memory.rs
+@@ -4,6 +4,7 @@
+ 
+ use crate::mmap::Mmap;
+ use crate::vmcontext::VMMemoryDefinition;
++use crate::wasmbounds_hooks::WasmboundsResizableRegion;
+ use crate::MemFdSlot;
+ use crate::MemoryMemFd;
+ use crate::Store;
+@@ -66,6 +67,12 @@ pub trait RuntimeLinearMemory: Send + Sync {
+     /// of bytes.
+     fn grow_to(&mut self, size: usize) -> Result<()>;
+ 
++    /// Shrink memory to the specified amount of bytes.
++    ///
++    /// Returns an error if memory can't be grown by the specified amount
++    /// of bytes.
++    fn shrink_to(&mut self, new_size: usize) -> Result<()>;
++
+     /// Return a `VMMemoryDefinition` for exposing the memory to compiled wasm
+     /// code.
+     fn vmmemory(&self) -> VMMemoryDefinition;
+@@ -80,7 +87,8 @@ pub trait RuntimeLinearMemory: Send + Sync {
+ #[derive(Debug)]
+ pub struct MmapMemory {
+     // The underlying allocation.
+-    mmap: Mmap,
++    //mmap: Mmap,
++    region: WasmboundsResizableRegion,
+ 
+     // The number of bytes that are accessible in `mmap` and available for
+     // reading and writing.
+@@ -126,7 +134,7 @@ impl MmapMemory {
+         let offset_guard_bytes = usize::try_from(plan.offset_guard_size).unwrap();
+         let pre_guard_bytes = usize::try_from(plan.pre_guard_size).unwrap();
+ 
+-        let (alloc_bytes, extra_to_reserve_on_growth) = match plan.style {
++        /*let (alloc_bytes, extra_to_reserve_on_growth) = match plan.style {
+             // Dynamic memories start with the minimum size plus the `reserve`
+             // amount specified to grow into.
+             MemoryStyle::Dynamic { reserve } => (minimum, usize::try_from(reserve).unwrap()),
+@@ -143,40 +151,46 @@ impl MmapMemory {
+                 maximum = Some(bound_bytes.min(maximum.unwrap_or(usize::MAX)));
+                 (bound_bytes, 0)
+             }
+-        };
++        };*/
++        let (alloc_bytes, extra_to_reserve_on_growth) =
++            ((WASM32_MAX_PAGES * WASM_PAGE_SIZE_U64) as usize, 0);
++        maximum = Some(alloc_bytes);
+         let request_bytes = pre_guard_bytes
+             .checked_add(alloc_bytes)
+             .and_then(|i| i.checked_add(extra_to_reserve_on_growth))
+             .and_then(|i| i.checked_add(offset_guard_bytes))
+             .ok_or_else(|| format_err!("cannot allocate {} with guard regions", minimum))?;
+ 
+-        let mut mmap = Mmap::accessible_reserved(0, request_bytes)?;
+-        if minimum > 0 {
+-            mmap.make_accessible(pre_guard_bytes, minimum)?;
+-        }
++        // let mut mmap = Mmap::accessible_reserved(0, request_bytes)?;
++        // if minimum > 0 {
++        //     mmap.make_accessible(pre_guard_bytes, minimum)?;
++        // }
++        let mut region =
++            WasmboundsResizableRegion::new(minimum + pre_guard_bytes, request_bytes, 12);
+ 
+         // If a memfd image was specified, try to create the MemFdSlot on top of our mmap.
+         let memfd = match memfd_image {
+             Some(image) => {
+-                let base = unsafe { mmap.as_mut_ptr().add(pre_guard_bytes) };
+-                let mut memfd_slot = MemFdSlot::create(
+-                    base.cast(),
+-                    minimum,
+-                    alloc_bytes + extra_to_reserve_on_growth,
+-                );
+-                memfd_slot.instantiate(minimum, Some(image))?;
+-                // On drop, we will unmap our mmap'd range that this
+-                // memfd_slot was mapped on top of, so there is no
+-                // need for the memfd_slot to wipe it with an
+-                // anonymous mapping first.
+-                memfd_slot.no_clear_on_drop();
+-                Some(memfd_slot)
++                panic!("Memfd unsupported in wasmbounds benchmark configuration")
++                // let base = unsafe { mmap.as_mut_ptr().add(pre_guard_bytes) };
++                // let mut memfd_slot = MemFdSlot::create(
++                //     base.cast(),
++                //     minimum,
++                //     alloc_bytes + extra_to_reserve_on_growth,
++                // );
++                // memfd_slot.instantiate(minimum, Some(image))?;
++                // // On drop, we will unmap our mmap'd range that this
++                // // memfd_slot was mapped on top of, so there is no
++                // // need for the memfd_slot to wipe it with an
++                // // anonymous mapping first.
++                // memfd_slot.no_clear_on_drop();
++                // Some(memfd_slot)
+             }
+             None => None,
+         };
+ 
+         Ok(Self {
+-            mmap,
++            region,
+             accessible: minimum,
+             maximum,
+             pre_guard_size: pre_guard_bytes,
+@@ -197,34 +211,36 @@ impl RuntimeLinearMemory for MmapMemory {
+     }
+ 
+     fn grow_to(&mut self, new_size: usize) -> Result<()> {
+-        if new_size > self.mmap.len() - self.offset_guard_size - self.pre_guard_size {
+-            // If the new size of this heap exceeds the current size of the
+-            // allocation we have, then this must be a dynamic heap. Use
+-            // `new_size` to calculate a new size of an allocation, allocate it,
+-            // and then copy over the memory from before.
+-            let request_bytes = self
+-                .pre_guard_size
+-                .checked_add(new_size)
+-                .and_then(|s| s.checked_add(self.extra_to_reserve_on_growth))
+-                .and_then(|s| s.checked_add(self.offset_guard_size))
+-                .ok_or_else(|| format_err!("overflow calculating size of memory allocation"))?;
+-
+-            let mut new_mmap = Mmap::accessible_reserved(0, request_bytes)?;
+-            new_mmap.make_accessible(self.pre_guard_size, new_size)?;
+-
+-            new_mmap.as_mut_slice()[self.pre_guard_size..][..self.accessible]
+-                .copy_from_slice(&self.mmap.as_slice()[self.pre_guard_size..][..self.accessible]);
+-
+-            // Now drop the MemFdSlot, if any. We've lost the CoW
+-            // advantages by explicitly copying all data, but we have
+-            // preserved all of its content; so we no longer need the
+-            // memfd mapping. We need to do this before we
+-            // (implicitly) drop the `mmap` field by overwriting it
+-            // below.
+-            let _ = self.memfd.take();
+-
+-            self.mmap = new_mmap;
++        if new_size > self.region.capacity() - self.offset_guard_size - self.pre_guard_size {
++            panic!("Exceeding region capacity");
++            // // If the new size of this heap exceeds the current size of the
++            // // allocation we have, then this must be a dynamic heap. Use
++            // // `new_size` to calculate a new size of an allocation, allocate it,
++            // // and then copy over the memory from before.
++            // let request_bytes = self
++            //     .pre_guard_size
++            //     .checked_add(new_size)
++            //     .and_then(|s| s.checked_add(self.extra_to_reserve_on_growth))
++            //     .and_then(|s| s.checked_add(self.offset_guard_size))
++            //     .ok_or_else(|| format_err!("overflow calculating size of memory allocation"))?;
++
++            // let mut new_mmap = Mmap::accessible_reserved(0, request_bytes)?;
++            // new_mmap.make_accessible(self.pre_guard_size, new_size)?;
++
++            // new_mmap.as_mut_slice()[self.pre_guard_size..][..self.accessible]
++            //     .copy_from_slice(&self.mmap.as_slice()[self.pre_guard_size..][..self.accessible]);
++
++            // // Now drop the MemFdSlot, if any. We've lost the CoW
++            // // advantages by explicitly copying all data, but we have
++            // // preserved all of its content; so we no longer need the
++            // // memfd mapping. We need to do this before we
++            // // (implicitly) drop the `mmap` field by overwriting it
++            // // below.
++            // let _ = self.memfd.take();
++
++            // self.mmap = new_mmap;
+         } else if let Some(memfd) = self.memfd.as_mut() {
++            panic!("Memfd not supported in wasmbounds benchmarks");
+             // MemFdSlot has its own growth mechanisms; defer to its
+             // implementation.
+             memfd.set_heap_limit(new_size)?;
+@@ -236,10 +252,11 @@ impl RuntimeLinearMemory for MmapMemory {
+             // initial allocation to grow into before the heap is moved in
+             // memory.
+             assert!(new_size > self.accessible);
+-            self.mmap.make_accessible(
+-                self.pre_guard_size + self.accessible,
+-                new_size - self.accessible,
+-            )?;
++            // self.mmap.make_accessible(
++            //     self.pre_guard_size + self.accessible,
++            //     new_size - self.accessible,
++            // )?;
++            self.region.resize(self.pre_guard_size + new_size);
+         }
+ 
+         self.accessible = new_size;
+@@ -247,9 +264,16 @@ impl RuntimeLinearMemory for MmapMemory {
+         Ok(())
+     }
+ 
++    fn shrink_to(&mut self, new_size: usize) -> Result<()> {
++        assert!(new_size < self.accessible);
++        self.region.resize(self.pre_guard_size + new_size);
++        self.accessible = new_size;
++        Ok(())
++    }
++
+     fn vmmemory(&self) -> VMMemoryDefinition {
+         VMMemoryDefinition {
+-            base: unsafe { self.mmap.as_mut_ptr().add(self.pre_guard_size) },
++            base: unsafe { self.region.as_mut_ptr().add(self.pre_guard_size) },
+             current_length: self.accessible,
+         }
+     }
+@@ -318,6 +342,7 @@ impl Memory {
+         memfd_slot: Option<MemFdSlot>,
+         store: &mut dyn Store,
+     ) -> Result<Self> {
++        panic!("Static memory unsupported in wasmbounds configuration");
+         let (minimum, maximum) = Self::limit_new(plan, store)?;
+ 
+         let base = match maximum {
+@@ -592,6 +617,106 @@ impl Memory {
+         Ok(Some(old_byte_size))
+     }
+ 
++    /// Shrink memory
++    /// # Safety
++    /// Same as grow
++    pub unsafe fn shrink(
++        &mut self,
++        delta_pages: u64,
++        store: &mut dyn Store,
++    ) -> Result<Option<usize>, Error> {
++        let old_byte_size = self.byte_size();
++        // Wasm spec: when growing by 0 pages, always return the current size.
++        if delta_pages == 0 {
++            return Ok(Some(old_byte_size));
++        }
++
++        // calculate byte size of the new allocation. Let it overflow up to
++        // usize::MAX, then clamp it down to absolute_max.
++        let shrink_bytes = usize::try_from(delta_pages)
++            .unwrap_or(usize::MAX)
++            .saturating_mul(WASM_PAGE_SIZE);
++        let new_byte_size = old_byte_size.saturating_sub(shrink_bytes);
++
++        // let maximum = self.maximum_byte_size();
++        // Store limiter gets first chance to reject memory_growing.
++        // if !store.memory_growing(old_byte_size, new_byte_size, maximum)? {
++        //     return Ok(None);
++        // }
++
++        // Never exceed maximum, even if limiter permitted it.
++        // if let Some(max) = maximum {
++        //     if new_byte_size > max {
++        //         store.memory_grow_failed(&format_err!("Memory maximum size exceeded"));
++        //         return Ok(None);
++        //     }
++        // }
++
++        // #[cfg(all(feature = "uffd", target_os = "linux"))]
++        // {
++        //     if self.is_static() {
++        //         // Reset any faulted guard pages before growing the memory.
++        //         if let Err(e) = self.reset_guard_pages() {
++        //             store.memory_grow_failed(&e);
++        //             return Ok(None);
++        //         }
++        //     }
++        // }
++
++        match self {
++            Memory::Static {
++                base,
++                size,
++                memfd_slot: Some(ref mut memfd_slot),
++                ..
++            } => {
++                // Never exceed static memory size
++                if new_byte_size > base.len() {
++                    store.memory_grow_failed(&format_err!("static memory size exceeded"));
++                    return Ok(None);
++                }
++
++                if let Err(e) = memfd_slot.set_heap_limit(new_byte_size) {
++                    store.memory_grow_failed(&e);
++                    return Ok(None);
++                }
++                *size = new_byte_size;
++            }
++            Memory::Static {
++                base,
++                size,
++                make_accessible,
++                ..
++            } => {
++                let make_accessible = make_accessible
++                    .expect("make_accessible must be Some if this is not a MemFD memory");
++
++                // Never exceed static memory size
++                if new_byte_size > base.len() {
++                    store.memory_grow_failed(&format_err!("static memory size exceeded"));
++                    return Ok(None);
++                }
++
++                // Operating system can fail to make memory accessible
++                if let Err(e) = make_accessible(
++                    base.as_mut_ptr().add(old_byte_size),
++                    new_byte_size - old_byte_size,
++                ) {
++                    store.memory_grow_failed(&e);
++                    return Ok(None);
++                }
++                *size = new_byte_size;
++            }
++            Memory::Dynamic(mem) => {
++                if let Err(e) = mem.shrink_to(new_byte_size) {
++                    store.memory_grow_failed(&e);
++                    return Ok(None);
++                }
++            }
++        }
++        Ok(Some(old_byte_size))
++    }
++
+     /// Return a `VMMemoryDefinition` for exposing the memory to compiled wasm code.
+     pub fn vmmemory(&mut self) -> VMMemoryDefinition {
+         match self {
+diff --git a/wasmtime/crates/runtime/src/wasmbounds_hooks.rs b/wasmtime/crates/runtime/src/wasmbounds_hooks.rs
+new file mode 100644
+index 00000000..f47239be
+--- /dev/null
++++ b/wasmtime/crates/runtime/src/wasmbounds_hooks.rs
+@@ -0,0 +1,107 @@
++//! Wasmbounds hooks
++
++// uint8_t *wasmboundsAllocateRegion(size_t rwSize, size_t maxSize,
++// size_t alignmentLog2 = 12);
++
++// void wasmboundsFreeRegion(uint8_t *region, size_t size);
++// void wasmboundsResizeRegion(uint8_t *region, size_t oldSize, size_t newSize);
++
++use std::ptr::null_mut;
++
++extern "C" {
++    fn wasmboundsAllocateRegion(
++        rw_size: libc::size_t,
++        max_size: libc::size_t,
++        alignment_log2: libc::size_t,
++    ) -> *mut u8;
++    fn wasmboundsFreeRegion(region: *mut u8, size: libc::size_t);
++    fn wasmboundsResizeRegion(region: *mut u8, old_size: libc::size_t, new_size: libc::size_t);
++}
++
++/// Allocate a resizable region
++pub fn allocate_region(rw_size: usize, capacity: usize, alignment_log2: usize) -> *mut u8 {
++    unsafe { wasmboundsAllocateRegion(rw_size, capacity, alignment_log2) }
++}
++
++/// Free a resizable region
++/// # Safety
++/// Region must come from allocate_region, with the right size
++pub unsafe fn free_region(region: *mut u8, capacity: usize) {
++    wasmboundsFreeRegion(region, capacity)
++}
++
++/// Resize a resizable region
++/// # Safety
++/// Region must come from allocate_region, with the right size
++pub unsafe fn resize_region(region: *mut u8, old_size: usize, new_size: usize) {
++    wasmboundsResizeRegion(region, old_size, new_size)
++}
++
++/// Safe wrapper around resizable regions
++#[derive(Debug)]
++pub struct WasmboundsResizableRegion {
++    region: *mut u8,
++    capacity: usize,
++    size: usize,
++}
++
++unsafe impl Send for WasmboundsResizableRegion {}
++unsafe impl Sync for WasmboundsResizableRegion {}
++
++impl WasmboundsResizableRegion {
++    /// New region
++    pub fn new(initial_size: usize, capacity: usize, alignment_log2: usize) -> Self {
++        Self {
++            region: allocate_region(initial_size, capacity, alignment_log2),
++            capacity,
++            size: initial_size,
++        }
++    }
++
++    /// Access capacity (in bytes)
++    pub fn capacity(&self) -> usize {
++        self.capacity
++    }
++
++    /// Access current valid size (in bytes)
++    pub fn size(&self) -> usize {
++        self.size
++    }
++
++    /// Resize the region
++    pub fn resize(&mut self, new_size: usize) {
++        assert!(!self.region.is_null());
++        if new_size != self.size {
++            unsafe {
++                resize_region(self.region, self.size, new_size);
++            }
++            self.size = new_size;
++        }
++    }
++
++    /// Gets the (safe, non-null) data pointer for the region
++    /// # Safety
++    /// The returned pointer has a lifetime as-if derived from &mut self
++    pub unsafe fn as_mut_ptr(&self) -> *mut u8 {
++        assert!(!self.region.is_null());
++        self.region
++    }
++
++    /// Gets the (safe, non-null) data pointer for the region
++    pub fn as_mut_slice(&mut self) -> &mut [u8] {
++        assert!(!self.region.is_null());
++        // Safety: Exclusive reference is held for self
++        unsafe { std::slice::from_raw_parts_mut(self.region, self.size) }
++    }
++}
++
++impl Drop for WasmboundsResizableRegion {
++    fn drop(&mut self) {
++        if !self.region.is_null() {
++            unsafe {
++                free_region(self.region, self.capacity);
++            }
++            self.region = null_mut();
++        }
++    }
++}
+diff --git a/wasmtime/crates/wasmtime/src/config.rs b/wasmtime/crates/wasmtime/src/config.rs
+index b2f47c8a..fefd0aba 100644
+--- a/wasmtime/crates/wasmtime/src/config.rs
++++ b/wasmtime/crates/wasmtime/src/config.rs
+@@ -128,7 +128,7 @@ impl Config {
+             module_version: ModuleVersionStrategy::default(),
+             parallel_compilation: true,
+             // Default to paged memory initialization when using uffd on linux
+-            paged_memory_initialization: cfg!(all(target_os = "linux", feature = "uffd")),
++            paged_memory_initialization: false,
+         };
+         #[cfg(compiler)]
+         {
+diff --git a/wasmtime/crates/wasmtime/src/memory.rs b/wasmtime/crates/wasmtime/src/memory.rs
+index 596e1153..56d2ebc2 100644
+--- a/wasmtime/crates/wasmtime/src/memory.rs
++++ b/wasmtime/crates/wasmtime/src/memory.rs
+@@ -509,6 +509,22 @@ impl Memory {
+         }
+     }
+ 
++    /// Shrink memory
++    pub fn shrink(&self, mut store: impl AsContextMut, delta: u64) -> Result<u64> {
++        let store = store.as_context_mut().0;
++        let mem = self.wasmtime_memory(store);
++        unsafe {
++            match (*mem).shrink(delta, store)? {
++                Some(size) => {
++                    let vm = (*mem).vmmemory();
++                    *store[self.0].definition = vm;
++                    Ok(u64::try_from(size).unwrap() / u64::from(wasmtime_environ::WASM_PAGE_SIZE))
++                }
++                None => bail!("failed to shrink memory by `{}`", delta),
++            }
++        }
++    }
++
+     #[cfg_attr(nightlydoc, doc(cfg(feature = "async")))]
+     /// Async variant of [`Memory::grow`]. Required when using a
+     /// [`ResourceLimiterAsync`](`crate::ResourceLimiterAsync`).
+@@ -598,6 +614,13 @@ pub unsafe trait LinearMemory: Send + Sync + 'static {
+     /// Returns `Ok` if memory was grown successfully.
+     fn grow_to(&mut self, new_size: usize) -> Result<()>;
+ 
++    /// Shrinks this memory to have the `new_size`, in bytes, specified.
++    ///
++    /// Returns `Err` if memory can't be grown by the specified amount
++    /// of bytes. The error may be downcastable to `std::io::Error`.
++    /// Returns `Ok` if memory was grown successfully.
++    fn shrink_to(&mut self, new_size: usize) -> Result<()>;
++
+     /// Return the allocated memory as a mutable pointer to u8.
+     fn as_ptr(&self) -> *mut u8;
+ }
+diff --git a/wasmtime/crates/wasmtime/src/trampoline/memory.rs b/wasmtime/crates/wasmtime/src/trampoline/memory.rs
+index bd47e451..4da44340 100644
+--- a/wasmtime/crates/wasmtime/src/trampoline/memory.rs
++++ b/wasmtime/crates/wasmtime/src/trampoline/memory.rs
+@@ -42,6 +42,10 @@ impl RuntimeLinearMemory for LinearMemoryProxy {
+         self.mem.grow_to(new_size)
+     }
+ 
++    fn shrink_to(&mut self, new_size: usize) -> Result<()> {
++        self.mem.shrink_to(new_size)
++    }
++
+     fn vmmemory(&self) -> VMMemoryDefinition {
+         VMMemoryDefinition {
+             base: self.mem.as_ptr(),

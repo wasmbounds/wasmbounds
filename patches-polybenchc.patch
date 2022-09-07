@@ -1,0 +1,14 @@
+diff --git a/polybench-c-4.2/utilities/polybench.c b/polybench-c-4.2/utilities/polybench.c
+index 9aabd8ed..34da3323 100644
+--- a/polybench-c-4.2/utilities/polybench.c
++++ b/polybench-c-4.2/utilities/polybench.c
+@@ -16,7 +16,9 @@
+ #include <assert.h>
+ #include <time.h>
+ #include <sys/time.h>
++#ifndef __wasi__
+ #include <sys/resource.h>
++#endif
+ #include <sched.h>
+ #include <math.h>
+ #ifdef _OPENMP

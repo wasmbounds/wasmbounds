@@ -1,0 +1,287 @@
+diff --git a/wasm3-0.5.0/CMakeLists.txt b/wasm3-0.5.0/CMakeLists.txt
+index 92ba9507..8fef4715 100755
+--- a/wasm3-0.5.0/CMakeLists.txt
++++ b/wasm3-0.5.0/CMakeLists.txt
+@@ -100,7 +100,8 @@ add_executable(${OUT_FILE} ${app_srcs})
+ 
+ #-fno-optimize-sibling-calls
+ 
+-set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -DDEBUG=1")
++add_library(m3_cmake_config INTERFACE)
++target_compile_definitions(m3_cmake_config INTERFACE $<$<CONFIG:Debug>:DEBUG>)
+ 
+ if(EMSCRIPTEN OR EMSCRIPTEN_LIB)
+ 
+@@ -155,7 +156,8 @@ elseif(WIN32 AND NOT MINGW)
+ 
+ else()
+ 
+-  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Dd_m3HasTracer") #-Dd_m3FixedHeap=1048576
++  target_compile_definitions(m3_cmake_config INTERFACE d_m3HasTracer)
++  #set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Dd_m3HasTracer") #-Dd_m3FixedHeap=1048576
+   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -Wparentheses -Wundef -Wpointer-arith -Wstrict-aliasing=2")
+   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Werror=implicit-function-declaration") # -Werror=cast-align
+   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-unused-function -Wno-unused-variable -Wno-unused-parameter -Wno-missing-field-initializers")
+@@ -171,6 +173,8 @@ else()
+   if(BUILD_NATIVE)
+     if(APPLE AND CMAKE_C_COMPILER_ID MATCHES "Clang" AND CMAKE_HOST_SYSTEM_PROCESSOR MATCHES "arm64")
+       set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -mcpu=native")
++    elseif(CMAKE_HOST_SYSTEM_PROCESSOR MATCHES "riscv64")
++    set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -march=rv64gcv")
+     else()
+       set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -march=native")
+     endif()
+@@ -184,15 +188,17 @@ else()
+ endif()
+ 
+ if(BUILD_WASI MATCHES "simple")
+-  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Dd_m3HasWASI")
++  #set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Dd_m3HasWASI")
++  target_compile_definitions(m3_cmake_config INTERFACE d_m3HasWASI)
+ elseif(BUILD_WASI MATCHES "metawasi")
+   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Dd_m3HasMetaWASI")
++  target_compile_definitions(m3_cmake_config INTERFACE d_m3HasMetaWASI)
+ elseif(BUILD_WASI MATCHES "uvwasi")
+   include(FetchContent)
+   FetchContent_Declare(
+     uvwasi
+-    GIT_REPOSITORY https://github.com/vshymanskyy/uvwasi.git
+-    GIT_TAG b063d686848c32a26119513056874f051c74258a
++    GIT_REPOSITORY https://github.com/nodejs/uvwasi.git
++    GIT_TAG b599542f7ce001e04cdff9db82b05fee96bb3332
+   )
+ 
+   FetchContent_GetProperties(uvwasi)
+@@ -201,7 +207,8 @@ elseif(BUILD_WASI MATCHES "uvwasi")
+     include_directories("${uvwasi_SOURCE_DIR}/include")
+     add_subdirectory(${uvwasi_SOURCE_DIR} ${uvwasi_BINARY_DIR} EXCLUDE_FROM_ALL)
+   endif()
+-  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Dd_m3HasUVWASI")
++  #set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Dd_m3HasUVWASI")
++  target_compile_definitions(m3_cmake_config INTERFACE d_m3HasUVWASI)
+   target_link_libraries(${OUT_FILE} uvwasi_a uv_a)
+ endif()
+ 
+@@ -214,7 +221,7 @@ else()
+ endif()
+ 
+ add_subdirectory(source)
+-target_link_libraries(${OUT_FILE} m3)
++target_link_libraries(${OUT_FILE} m3 m3_cmake_config)
+ 
+ message("Flags:         ${CMAKE_C_FLAGS}")
+ message("Debug flags:   ${CMAKE_C_FLAGS_DEBUG}")
+diff --git a/wasm3-0.5.0/source/CMakeLists.txt b/wasm3-0.5.0/source/CMakeLists.txt
+index 070c7fa8..a03849fb 100644
+--- a/wasm3-0.5.0/source/CMakeLists.txt
++++ b/wasm3-0.5.0/source/CMakeLists.txt
+@@ -18,6 +18,10 @@ set(sources
+ )
+ 
+ add_library(m3 STATIC ${sources})
++target_link_libraries(m3 PUBLIC m3_cmake_config)
++if(BUILD_WASI MATCHES "uvwasi")
++    target_link_libraries(m3 PUBLIC uvwasi_a uv_a)
++endif()
+ 
+ target_include_directories(m3 PUBLIC .)
+ 
+diff --git a/wasm3-0.5.0/source/m3_api_uvwasi.c b/wasm3-0.5.0/source/m3_api_uvwasi.c
+index a059ffaf..6e8bdb3d 100644
+--- a/wasm3-0.5.0/source/m3_api_uvwasi.c
++++ b/wasm3-0.5.0/source/m3_api_uvwasi.c
+@@ -337,7 +337,7 @@ m3ApiRawFunction(m3_wasi_unstable_fd_filestat_get)
+ 
+     uvwasi_errno_t ret = uvwasi_fd_filestat_get(&uvwasi, fd, &stat);
+ 
+-    WASI_TRACE("fd:%d | fs.size:%d", fd, stat.st_size);
++    WASI_TRACE("fd:%d | fs.size:%zd", fd, stat.st_size);
+ 
+     if (ret != UVWASI_ESUCCESS) {
+         m3ApiReturn(ret);
+@@ -368,7 +368,7 @@ m3ApiRawFunction(m3_wasi_snapshot_preview1_fd_filestat_get)
+ 
+     uvwasi_errno_t ret = uvwasi_fd_filestat_get(&uvwasi, fd, &stat);
+ 
+-    WASI_TRACE("fd:%d | fs.size:%d", fd, stat.st_size);
++    WASI_TRACE("fd:%d | fs.size:%zd", fd, stat.st_size);
+ 
+     if (ret != UVWASI_ESUCCESS) {
+         m3ApiReturn(ret);
+@@ -408,7 +408,7 @@ m3ApiRawFunction(m3_wasi_unstable_fd_seek)
+ 
+     uvwasi_errno_t ret = uvwasi_fd_seek(&uvwasi, fd, offset, whence, result);
+ 
+-    WASI_TRACE("fd:%d, offset:%d, whence:%s | result:%d", fd, offset, whstr, *result);
++    WASI_TRACE("fd:%d, offset:%zd, whence:%s | result:%zd", fd, offset, whstr, *result);
+ 
+     //TODO: m3ApiWriteMem
+ 
+@@ -436,7 +436,7 @@ m3ApiRawFunction(m3_wasi_snapshot_preview1_fd_seek)
+ 
+     uvwasi_errno_t ret = uvwasi_fd_seek(&uvwasi, fd, offset, whence, result);
+ 
+-    WASI_TRACE("fd:%d, offset:%d, whence:%s | result:%d", fd, offset, whstr, *result);
++    WASI_TRACE("fd:%d, offset:%zd, whence:%s | result:%zd", fd, offset, whstr, *result);
+ 
+     //TODO: m3ApiWriteMem
+ 
+@@ -536,7 +536,7 @@ m3ApiRawFunction(m3_wasi_generic_path_symlink)
+     uvwasi_errno_t ret = uvwasi_path_symlink(&uvwasi, old_path, old_path_len,
+                                                   fd, new_path, new_path_len);
+ 
+-    WASI_TRACE("old_fd:%d, old_path:%s, fd:%d, new_path:%s", old_fd, old_path, fd, new_path);
++    WASI_TRACE("old_path:%s, fd:%d, new_path:%s", old_path, fd, new_path);
+ 
+     m3ApiReturn(ret);
+ }
+@@ -609,7 +609,7 @@ m3ApiRawFunction(m3_wasi_unstable_path_filestat_get)
+ 
+     uvwasi_errno_t ret = uvwasi_path_filestat_get(&uvwasi, fd, flags, path, path_len, &stat);
+ 
+-    WASI_TRACE("fd:%d, flags:0x%x, path:%s | fs.size:%d", fd, flags, path, stat.st_size);
++    WASI_TRACE("fd:%d, flags:0x%x, path:%s | fs.size:%zd", fd, flags, path, stat.st_size);
+ 
+     if (ret != UVWASI_ESUCCESS) {
+         m3ApiReturn(ret);
+@@ -644,7 +644,7 @@ m3ApiRawFunction(m3_wasi_snapshot_preview1_path_filestat_get)
+ 
+     uvwasi_errno_t ret = uvwasi_path_filestat_get(&uvwasi, fd, flags, path, path_len, &stat);
+ 
+-    WASI_TRACE("fd:%d, flags:0x%x, path:%s | fs.size:%d", fd, flags, path, stat.st_size);
++    WASI_TRACE("fd:%d, flags:0x%x, path:%s | fs.size:%zd", fd, flags, path, stat.st_size);
+ 
+     if (ret != UVWASI_ESUCCESS) {
+         m3ApiReturn(ret);
+diff --git a/wasm3-0.5.0/source/m3_compile.c b/wasm3-0.5.0/source/m3_compile.c
+index 06446ef7..4046a49d 100644
+--- a/wasm3-0.5.0/source/m3_compile.c
++++ b/wasm3-0.5.0/source/m3_compile.c
+@@ -647,7 +647,8 @@ _           (PushAllocatedSlotAndEmit (o, i_type));
+             if (is64BitType)
+             {
+                 u64 * constant = (u64 *) & o->constants [constTableIndex];
+-                * constant = i_word;
++                // * constant = i_word;
++                memcpy(constant, &i_word, 8);
+             }
+             else
+             {
+diff --git a/wasm3-0.5.0/source/m3_env.c b/wasm3-0.5.0/source/m3_env.c
+index 3a159fd2..a33df347 100644
+--- a/wasm3-0.5.0/source/m3_env.c
++++ b/wasm3-0.5.0/source/m3_env.c
+@@ -231,7 +231,11 @@ void  Runtime_Release  (IM3Runtime i_runtime)
+     Environment_ReleaseCodePages (i_runtime->environment, i_runtime->pagesFull);
+ 
+     m3_Free (i_runtime->stack);
+-    m3_Free (i_runtime->memory.mallocated);
++    if (i_runtime->memory.mallocated) {
++      wasmboundsFreeRegion(i_runtime->memory.region, i_runtime->memory.mallocated->length + 4096);
++      i_runtime->memory.mallocated = NULL;
++      i_runtime->memory.region = NULL;
++    }
+ }
+ 
+ 
+@@ -371,16 +375,21 @@ M3Result  ResizeMemory  (IM3Runtime io_runtime, u32 i_numPages)
+             numPageBytes = M3_MIN (numPageBytes, io_runtime->memoryLimit);
+         }
+ 
+-        size_t numBytes = numPageBytes + sizeof (M3MemoryHeader);
++        size_t numBytes = numPageBytes + 4096;
+ 
+         size_t numPreviousBytes = memory->numPages * d_m3MemPageSize;
+         if (numPreviousBytes)
+-            numPreviousBytes += sizeof (M3MemoryHeader);
++            numPreviousBytes += 4096;
+ 
+-        void* newMem = m3_Realloc (memory->mallocated, numBytes, numPreviousBytes);
+-        _throwifnull(newMem);
++        //void* newMem = m3_Realloc (memory->mallocated, numBytes, numPreviousBytes);
++        if (numPreviousBytes == 0) {
++          memory->region = wasmboundsAllocateRegion(numBytes, (size_t)(d_m3MaxLinearMemoryPages) * (size_t)(d_m3MemPageSize) + 4096, 12);
++          memory->mallocated = (M3MemoryHeader *)(memory->region + 4096 - sizeof(M3MemoryHeader));
++        } else {
++          wasmboundsResizeRegion(memory->region, numPreviousBytes, numBytes);
++        }
+ 
+-        memory->mallocated = (M3MemoryHeader*)newMem;
++        _throwifnull(memory->region);
+ 
+ # if d_m3LogRuntime
+         M3MemoryHeader * oldMallocated = memory->mallocated;
+diff --git a/wasm3-0.5.0/source/m3_env.h b/wasm3-0.5.0/source/m3_env.h
+index 15e8bde7..a0c22ff8 100644
+--- a/wasm3-0.5.0/source/m3_env.h
++++ b/wasm3-0.5.0/source/m3_env.h
+@@ -14,6 +14,7 @@
+ 
+ d_m3BeginExternC
+ 
++#include <wasmbounds_rr.h>
+ 
+ //---------------------------------------------------------------------------------------------------------------------------------
+ 
+@@ -27,6 +28,7 @@ M3MemoryInfo;
+ 
+ typedef struct M3Memory
+ {
++    uint8_t* region;
+     M3MemoryHeader *        mallocated;
+ 
+     u32                     numPages;
+@@ -115,6 +117,7 @@ typedef struct M3Module
+     //bool                    hasWasmCodeCopy;
+ 
+     struct M3Module *       next;
++    i32                     mainFunction;
+ }
+ M3Module;
+ 
+diff --git a/wasm3-0.5.0/source/m3_module.c b/wasm3-0.5.0/source/m3_module.c
+index d6ba8d8b..daba526f 100644
+--- a/wasm3-0.5.0/source/m3_module.c
++++ b/wasm3-0.5.0/source/m3_module.c
+@@ -11,10 +11,16 @@
+ 
+ void Module_FreeFunctions (IM3Module i_module)
+ {
++    if (i_module->functions == NULL)
++    {
++        return;
++    }
+     for (u32 i = 0; i < i_module->numFunctions; ++i)
+     {
+         IM3Function func = & i_module->functions [i];
+-        Function_Release (func);
++        if (func != NULL) {
++            Function_Release (func);
++        }
+     }
+ }
+ 
+diff --git a/wasm3-0.5.0/source/m3_parse.c b/wasm3-0.5.0/source/m3_parse.c
+index 00e01b03..76efacf8 100644
+--- a/wasm3-0.5.0/source/m3_parse.c
++++ b/wasm3-0.5.0/source/m3_parse.c
+@@ -240,6 +240,11 @@ _       (ReadLEB_u32 (& index, & i_bytes, i_end));
+         {
+             _throwif(m3Err_wasmMalformed, index >= io_module->numFunctions);
+             IM3Function func = &(io_module->functions [index]);
++            if (strcmp("_start", utf8) == 0)
++            {
++                io_module->mainFunction = index;
++                // fprintf(stderr, "mainFunction 0x%03x 0x%08p\n", index, io_module);
++            }
+             if (func->numNames < d_m3MaxDuplicateFunctionImpl)
+             {
+                 func->names[func->numNames++] = utf8;
+@@ -585,6 +590,7 @@ _try {
+     _throwifnull (module);
+     module->name = ".unnamed";                                                      m3log (parse, "load module: %d bytes", i_numBytes);
+     module->startFunction = -1;
++    module->mainFunction = -1;
+     //module->hasWasmCodeCopy = false;
+     module->environment = i_environment;
+ 
