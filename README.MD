@@ -9,6 +9,7 @@ A list of the specific code and data files in the bundle follows, with instructi
 1. `graphs/plots`: Plots used in the paper
 2. `graphs/wasmbounds.Rmd`, `graphs/knitall.R`: R source code used to generate the plots
 3. `runs/kone.csv`, `runs/sole.csv`, `runs/riscv.csv`: Raw experimental data used to generate the plots in the CSV (comma-separated value) format (kone = x86_64 machine, sole = armv8 machine, riscv = Nezha D1 RISC-V development board)
+   - These are gzipped in the GitHub version of this archive due to file size limitations, make sure to unzip them before using any of the scripts
 4. `patches-{polybenchc,speccpu2017}.patch`: Our patches to the Polybench/C and SPECcpu2017 benchmark suites to make them compatible with WebAssembly
 5. `patches-{nodev8,wasm3,wasmtime,wavm}.patch`: Our patches to the WebAssembly runtimes evaluated in the paper adding support for alternative bounds checking methods and integrating them with our benchmarking harness
 6. `runner-src/*`, `CMakeLists.txt`, `CMakePresets.json`: C++ Source code for the benchmarking harness, including the UserfaultFD memory arena manager
