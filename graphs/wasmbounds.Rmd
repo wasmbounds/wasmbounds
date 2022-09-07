@@ -7,6 +7,8 @@ output:
     toc: yes
   pdf_document:
     toc: yes
+params:
+  machine_name: "kone"
 ---
 
 ```{r setup, include=FALSE, error=FALSE}
@@ -20,7 +22,7 @@ knitr::opts_chunk$set(echo = FALSE, error = TRUE)
 ```
 
 ```{r read_raw_csv, include=FALSE, error=FALSE}
-machine = "kone"
+machine <- params$machine_name
 raw_csv <- import(paste0("../runs/", machine, ".csv"), "csv", fill=TRUE, header=TRUE)
 ```
 
@@ -99,8 +101,14 @@ paper_shape_scale <- scale_shape_manual(values = c(0,1,2,3,4,5,6,14))
 
 paper_plot_path <- paste0('plots/wasmbounds_', machine, '_')
 
+if (!dir.exists("plots")) {
+  dir.create("plots")
+}
+
 gplt <- NULL
 oplt <- NULL
+
+has_16t <- (max(t_info$nthreads) >= 16)
 ```
 
 ## Timing
@@ -153,7 +161,7 @@ oplt
 ```
 
 #### 16 Threads
-```{r latency_rel_16t}
+```{r latency_rel_16t, eval=has_16t}
 gplt <- ggplot(t_info %>% filter(benchname != 'noopbench', nthreads == 16),
     aes(x = benchname, group = runbounds, fill = runner, colour = bounds)) +
   paper_disc_scale + paper_fill_scale + paper_shape_scale + paper_theme +
@@ -264,7 +272,7 @@ gplt <- NULL
 oplt
 ```
 
-```{r latency_rel_16t_defbounds_no_w3}
+```{r latency_rel_16t_defbounds_no_w3, eval=has_16t}
 gplt <- ggplot(t_info %>% filter(benchname != 'noopbench', nthreads == 16, runner != 'W3', bounds != 'Trap', bounds != 'Clamp', bounds != 'UFFD', (bounds != 'No checks') | (runner == LBL_NATIVE_CLANG) | (runner == LBL_NATIVE_GCC)),
     aes(x = benchname, group = runbounds, fill = runner)) +
   paper_disc_scale + paper_fill_scale + paper_shape_scale + paper_theme +
@@ -287,7 +295,7 @@ oplt
 
 ### Method comparison (geom avg)
 #### 1 Thread Compact Motivation
-```{r latency_rel_method_1t_motivation}
+```{r latency_rel_method_1t_motivation, eval=has_16t}
 method_stats <- t_info %>% filter(benchname != 'noopbench', nthreads == 16, bounds == "Mprotect" | bounds == "No checks") %>%
   group_by(runner, bounds, suite) %>% summarise(
     slowdown = exp(mean(log(med_us / clang_us), na.rm = TRUE))
@@ -347,7 +355,7 @@ oplt
 ```
 
 #### 16 Threads
-```{r latency_rel_method_16t}
+```{r latency_rel_method_16t, eval=has_16t}
 method_stats <- t_info %>% filter(benchname != 'noopbench', nthreads == 16) %>%
   group_by(runner, bounds, suite) %>% summarise(
     slowdown = exp(mean(log(med_us / clang_us), na.rm = TRUE))
@@ -493,7 +501,7 @@ oplt
 ```
 
 ### Load 16 threads
-```{r cpums_load_16t}
+```{r cpums_load_16t, eval=has_16t}
 cpu_stats <- t_info %>% filter(benchname != 'noopbench', nthreads == 16) %>%
   group_by(runner, bounds, suite) %>% summarise(cpupct = exp(mean(log(
     1600.0*(local_cpums_user_sum + local_cpums_nice_sum + local_cpums_system_sum + local_cpums_irq_sum + local_cpums_softirq_sum)/(total_cpums)), na.rm=TRUE
