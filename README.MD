@@ -1,6 +1,6 @@
 # Leaps and bounds: Analysing WebAssembly’s performance with a focus on bounds checking - Source code and experimental data bundle
 
-This is the code&data bundle accompanying the IISWC2022 paper "Leaps and bounds: Analysing WebAssembly’s performance with a focus on bounds checking" by Raven Szewczyk, Kim Stonehouse, Antonio Barbalce and Tom Spink.
+This is the code&data bundle accompanying the IISWC2022 paper "Leaps and bounds: Analysing WebAssembly’s performance with a focus on bounds checking" by Raven Szewczyk, Kim Stonehouse, Antonio Barbalace and Tom Spink.
 
 A list of the specific code and data files in the bundle follows, with instructions for reproducing the results of the paper afterwards.
 
