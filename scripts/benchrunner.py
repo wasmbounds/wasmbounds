@@ -46,15 +46,15 @@ def main():
     parser.add_argument('-r', '--min-runs', default=10, type=int,
                         help='Minimum number of times to run each benchmark instance for (per thread)')
     parser.add_argument('-x', '--runners',
-                        help='Path to runners', type=Path, default='/opt/wasmbounds/bin/' if path.exists('/opt/wasmbounds') else (WASMBOUNDS_DIR / 'runner-build' / 'default' / 'Release'))
+                        help='Path to compiled runner binaries', type=Path, default='/opt/wasmbounds/bin/' if path.exists('/opt/wasmbounds') else (WASMBOUNDS_DIR / 'runner-build' / 'default' / 'Release'))
     parser.add_argument('-o', '--output-dir', type=Path,
                         help='Path to place the output log in')
     parser.add_argument('-f', '--filter', type=str, default='',
-                        help='Benchmark filter')
+                        help='Benchmark filter (only use benchmarks containing this substring in their name)')
     parser.add_argument('-g', '--runner-filter', type=str, default='',
-                        help='Runner filter')
-    parser.add_argument('-S', '--suites', type=str, default='noopbench,polybenchc,spec',
-                        help='Benchmark suite[s] to run [noopbench,polybenchc,spec]')
+                        help='Runner filter (only use runners containing this substring in their name)')
+    parser.add_argument('-S', '--suites', type=str, default='polybenchc,spec.train',
+                        help='Benchmark suite[s] to run [noopbench,polybenchc,spec.train,spec.test,spec]')
     args = parser.parse_args()
 
     dry_run: bool = bool(args.dry_run)
@@ -194,12 +194,13 @@ def main():
     if try_run:
         cpunums = [2]
     else:
-        while numcpus >= 1:
-            cpunums.append(numcpus)
-            numcpus //= 4
-        if cpunums[-1] != 1:
-            cpunums.append(1)
-        cpunums.reverse()
+        # while numcpus >= 1:
+        #     cpunums.append(numcpus)
+        #     numcpus //= 4
+        # if cpunums[-1] != 1:
+        #     cpunums.append(1)
+        # cpunums.reverse()
+        cpunums = [1, 4, 16]
     numcpus = multiprocessing.cpu_count()
     if one_run:
         cpunums = [1]

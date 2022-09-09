@@ -10,8 +10,10 @@ if [[ "$1" == "polybenchc" || "$1" == "" ]]; then
     echo 'Native PolyBenchC-gcc'
     ./scripts/build_polybench.py -c gcc -d '.gcc'
 
-    echo 'WASM PolyBenchC'
-    ./scripts/build_polybench.py -c clang -d '.wasm'
+    if [[ $(uname -m) == "x86_64" ]]; then
+        echo 'WASM PolyBenchC'
+        ./scripts/build_polybench.py -c clang -d '.wasm'
+    fi
 fi
 
 if [[ "$1" == "spec" || "$1" == "" ]]; then
@@ -24,8 +26,10 @@ if [[ "$1" == "spec" || "$1" == "" ]]; then
     echo 'Native SPEC-gcc'
     ./scripts/compile_spec.sh gcc
 
-    echo 'WASM SPEC'
-    ./scripts/compile_spec.sh wasm
+    if [[ $(uname -m) == "x86_64" ]]; then
+        echo 'WASM SPEC'
+        ./scripts/compile_spec.sh wasm
+    fi
 fi
 
 echo 'Fixing file permissions'

@@ -3,8 +3,9 @@
 .dockerignore
 README.MD
 CMakeUserPresets.json
-Bakefile-riscv.hcl
+Bakefile-*.hcl
 build_containers*.sh
+wasmbounds-*.tar
 
 runner-build
 runner-build-rv

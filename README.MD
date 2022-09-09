@@ -4,7 +4,7 @@ This is the code&data bundle accompanying the IISWC2022 paper "Leaps and bounds:
 
 A list of the specific code and data files in the bundle follows, with instructions for reproducing the results of the paper afterwards.
 
-## Contents of the bundle
+# Contents of the bundle
 
 1. `graphs/plots`: Plots used in the paper
 2. `graphs/wasmbounds.Rmd`, `graphs/knitall.R`: R source code used to generate the plots
@@ -19,6 +19,7 @@ A list of the specific code and data files in the bundle follows, with instructi
 10. `cpp-libs/fmt`, `node-v18.2.0`, `polybench-c-4.2`, `wasm3-0.5.0`, `wasmtime`, `WAVM` - already patched open source third party libraries and WebAssembly runtimes used in the paper
 11. Not included: `spec-cpu` - an installation of the SPECcpu2017 benchmark suite, not included due to licensing restrictions but patches are provided for users who hold a license
 
+# Reproducing experimental results
 ## Format of the CSV experimental data
 
 The machines used for experiments in the CSV files provided in `runs/*.csv` are:
@@ -57,8 +58,10 @@ The required software for reproducing the results is as follows:
  - For the plotting: [R 4.2.1](https://www.r-project.org/), with the [tidyverse](https://www.tidyverse.org/) and other libraries, specifically: `tidyverse`, `rio`, `scales`, `xtable`, `ggbreak`, `patchwork`, `rmarkdown`, `xfun` all available via the R package repository.
  - For system monitoring (optional, recommended for full results): [Rust compiler v1.62.0, Cargo](https://www.rust-lang.org/), easiest to install using [rustup](https://rustup.rs/)
  - For compiling and running benchmarks via containers: [Docker](https://docs.docker.com/engine/) - Dockerfiles are provided which will fetch, compile and run all necessary dependencies
- - For compiling and running benchmarks bare metal (to avoid skewing performance numbers by the overhead of containers):
+ - For compiling and running benchmarks on bare metal (to avoid skewing performance numbers by the overhead of containers):
    - For Ubuntu 22.04-specific installation instructions see the commands in the Dockerfiles included in the repository
+   - [Python 3.10](https://www.python.org/)
+   - [Docker 20.10](https://docs.docker.com/engine/install/)
    - [Linux kernel, version at least 5.7](https://kernel.org/)
    - [GCC 11.2](https://gcc.gnu.org/) for native benchmark compilation
    - [LLVM 11 + Clang SDK](https://llvm.org/) for the WAVM runtime
@@ -84,44 +87,170 @@ The `knitall.R` script will also generate three pdfs named `graphs/wasmbounds-[M
 Due to the differences in configuration between the risc-v board and sole/kone, and different performance counters exposed on each of the CPUs some warnings and blank plots are expected -
 the scripts blindly try to generate them for all configurations (1/4/16 threads, all performance counters) even though not all of them are present in all machine files (e.g. multithreaded configurations are missing from the risc-v runs).
 
-## Building toolchain container
+## Compiling and running `statmon`, the system monitoring tool
 
+In a shell run the following:
+```bash
+cd statmon
+cargo build --release
+# Root permission might not be needed if unprivileged access to performance counters is enabled via the relevant sysctls in Linux
+sudo ./target/release/statmon --port 8125 --host-prefix local --netdev lo
+```
+
+This compiles and runs the daemon, listening on port 8125, monitoring the CPU and kernel performance counters and the `lo` device (localhost loopback) network traffic.
+
+## Importing pre-built toolchain and benchmark containers
+
+To load the OCI images into the local Docker installation for a specific architecture use the following commands:
+```bash
+docker load -i wasmbounds-runtime-base.ARCHITECTURE.tar
+docker load -i wasmbounds-toolchain-base.ARCHITECTURE.tar
+docker load -i wasmbounds-runners.ARCHITECTURE.tar
+```
+
+## Building the benchmark binaries using the Docker container
+
+Before running the benchmarks, they need to be compiled with optimizations for the local machine. To do this, run the following commands:
+```bash
+./build_binaries.sh polybenchc
+# If SPECcpu2017 was installed into spec-cpu and patched using the provided patch file:
+./build_binaries.sh spec
+```
+
+The WASI SDK is only provided for x86-64 architectures, so the WebAssembly binaries (in `binaries/*.wasm` and `rundirs/` for SPECcpu2017) have to be copied over from a x86-64 machine if building on another architecture.
+
+## Running the benchmarks using the Docker container
+
+### Trial runs
+First, do a dry run to make sure the benchmarking scripts work:
+```bash
+# Use --suites polybenchc,spec.train if SPECcpu2017 is installed
+./benchrunner.sh --monitor-host 127.0.0.1 --monitor-port 8125 --output-dir runs --dry-run --suites polybenchc
+```
+
+Confirm that a dry run file appears in the `runs/` directory, named `benchrunner-HOSTNAME-dry-DATE-TIME.log`.
+
+Then, we will do a quick run of each benchmark with no repetitions or warmup, to make sure every single one loads and executes correctly:
+```bash
+# Use --suites polybenchc,spec.train if SPECcpu2017 is installed
+./benchrunner.sh --monitor-host 127.0.0.1 --monitor-port 8125 --output-dir runs --one-run --min-seconds 0 --min-runs 1 --suites polybenchc
+```
+
+### Full run
+To run the full suite with warm-up and multiple runs as done in the paper:
+```bash
+# Use --suites polybenchc,spec.train if SPECcpu2017 is installed.
+# Polybench/C benchmarks run very quickly, while SPECcpu2017 take a lot of time, therefore
+# the min seconds and min runs parameters are the main controls for the runtime of each of the suites respectively.
+./benchrunner.sh --monitor-host 127.0.0.1 --monitor-port 8125 --output-dir runs --one-run --min-seconds 20 --min-runs 10 --suites polybenchc
+```
+Take note of the date and time the suite was run, and make sure to keep the corresponding `runs/[...].log` file safe.
+
+### Preparing the csv file for R plotting code
+To convert the full logfile into the abbreviated csv file used for plotting, use the following command:
+```
+./scripts/log2csv.py benchrunner-HOST-regular-DATE-TIME.log ./runs/myrun.csv
+```
+The short `knitall.R` script contains an array of machines plots are made for, add `myrun` to it to generate plots from your experiment run(s).
+
+### Details on benchrunner parameters
+The usage information can be printed by running `./benchrunner.sh --help`, or `./scripts/benchrunner.py --help` if the required native dependencies are installed. A copy of the options list is provided here for convenience:
+```
+usage: benchrunner.py [-h] [-n] [-T] [-1] [-4] [-m MONITOR_HOST]
+                      [-p MONITOR_PORT] [-s MIN_SECONDS] [-R RESTART_FROM]
+                      [-r MIN_RUNS] [-x RUNNERS] [-o OUTPUT_DIR] [-f FILTER]
+                      [-g RUNNER_FILTER] [-S SUITES]
+
+Benchmark runner script
+
+options:
+  -h, --help            show this help message and exit
+  -n, --dry-run         Do not run the benchmarks
+  -T, --try-run         Only run the noop benchmark, only 2 threads
+  -1, --one-run         Only run 1 bounds checking configuration, 1 thread
+  -4, --four-run        Only run 1 bounds checking configuration, 4 thread
+  -m MONITOR_HOST, --monitor-host MONITOR_HOST
+                        Statmon socket for cpu monitoring - host/ip
+  -p MONITOR_PORT, --monitor-port MONITOR_PORT
+                        Statmon socket for cpu monitoring - port number
+  -s MIN_SECONDS, --min-seconds MIN_SECONDS
+                        Minimum seconds to run each benchmark instance for
+  -R RESTART_FROM, --restart-from RESTART_FROM
+                        Restart from given run# if the previous run aborted
+                        early
+  -r MIN_RUNS, --min-runs MIN_RUNS
+                        Minimum number of times to run each benchmark instance
+                        for (per thread)
+  -x RUNNERS, --runners RUNNERS
+                        Path to compiled runner binaries
+  -o OUTPUT_DIR, --output-dir OUTPUT_DIR
+                        Path to place the output log in
+  -f FILTER, --filter FILTER
+                        Benchmark filter (only use benchmarks containing this
+                        substring in their name)
+  -g RUNNER_FILTER, --runner-filter RUNNER_FILTER
+                        Runner filter (only use runners containing this
+                        substring in their name)
+  -S SUITES, --suites SUITES
+                        Benchmark suite[s] to run
+                        [noopbench,polybenchc,spec.train,spec.test,spec]
+```
+
+The statmon socket parameters are optional, if not provided the cpu and system performance counter measurements will not be performed.
+
+# Inspecting, modifying and extending the benchmark suite
+## Structure of the benchmark source code
+
+Each of the WebAssembly (Wasm) runtimes and benchmark suites lives in a separate folder named after the upstream project.
+As much as it was possible, we made minimum modifications to the runtimes and instead put most of the shared code in the `runner-src/` directory.
+
+Each Wasm runtime has a corresponding benchmark runner executable, built from the `runner-src/impl_NAME.cpp` C++ source code, the build is defined in the `CMakeLists.txt` file at the root of the bundle.
+
+`runner-src/runner.cpp` has the main benchmarking loop, which calls the setup and run functions for each runner. The runner interface `RunnerImpl` is defined in `runner-src/runner.h` file, it provides 3 main functions: the constructor `RunnerImpl(const RunnerOptions &opts)` initializing the object, called once per thread; `void prepareRun(const RunnerOptions &opts)` which is executed before each execution step untimed; and `void runOnce(const RunnerOptions &opts)` which is executed at each step, timed by the runner loop.
+
+To implement bounds checking methods like `mprotect` and `uffd` control over the memory allocation is needed, so we implemented a small library `runner-src/vm-library` which provides header files for C and C++ at `wasmbounds_rr.h[pp]`, defining memory allocation, resizing and deallocation stubs allowing to use the same implementation across all tested WebAssembly runtimes.
+The runtimes were patched to call into this library instead of their own platform abstraction layer for managing WebAssembly memory objects for the purpose of evaluating the impact of different bounds checking methods in our paper.
+
+The difference between upstream projects and our patched versions can be seen either in the .patch files in our bundle, or as the difference between commit `56643dd094577b70d373009205e04df920eeba38` and the latest commit in the GitHub repository.
+
+## Building the containers locally
+
+For local development, the containers can be built and loaded into the local Docker instance using the following script:
 ```bash
 ./build_containers.sh
 ```
 
-## Building runner
-
-Locally:
-```bash
-mkdir -p runner-build/default
-cmake --preset default
-cmake --build --preset debug
-cmake --build --preset release
+To build the OCI images like provided in this artifact bundle, first set up cross-architecture docker buildx on your machine according to the documentation at <https://docs.docker.com/build/buildx/multiplatform-images/>.
+Then, each set of images can be built from its Bakefile like this:
+```
+docker buildx bake -f Bakefile-ARCH.hcl wasmbounds-runners
 ```
 
-In container:
+## Compiling the runners
+
+In the toolchain container:
 ```bash
+# To enter the container
+./toolchain_shell.sh
+
 mkdir -p runner-build/docker
 cmake --preset docker
 cmake --build --preset debug-docker
 cmake --build --preset release-docker
 ```
 
-You can create your own local cmake configuration if the default one doesn't work by making a CMakeUserPresets.json file (same format as CMakePresets.json).
-
-## Building all benchmarks
-
+Locally (bare metal):
+First, copy CMakePresets.json into CMakeUserPresets.json, rename the provided presets and change the CFG_LLVM_DIR variable to point to the LLVM11 local installation's `lib/cmake/llvm` folder (e.g. `/usr/lib/llvm-11/lib/cmake/llvm`).
+For more documentation on the syntax of CMakePresets.json, see <https://cmake.org/cmake/help/v3.22/manual/cmake-presets.7.html>.
+Then:
 ```bash
-./build_binaries.sh # This runs everything through the toolchain docker container
-# Build only one benchmark suite:
-./build_binaries.sh polybenchc
-./build_binaries.sh spec
+mkdir -p runner-build/default
+cmake --preset my-default
+cmake --build --preset my-debug
+cmake --build --preset my-release
 ```
 
-It will output all binaries to the `binaries` folder. Native builds are called `bench.gcc` and `bench.clang`, while WASM modules are called `bench.wasm`.
-
-## Running a single benchmark manually
+## Running a single Polybench/C benchmark manually using the docker container
 
 ```bash
 docker run --rm --privileged --mount type=bind,source="$(pwd)/binaries",target=/opt/wasmbounds/binaries wasmbounds-runners:latest /opt/wasmbounds/bin/wbrunner_native -t 4 -b none -s 1 -r 2 ../binaries/2mm.gcc
