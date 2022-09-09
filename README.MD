@@ -220,6 +220,8 @@ For local development, the containers can be built and loaded into the local Doc
 ./build_containers.sh
 ```
 
+Note: If errors like `/usr/sbin/dpkg-split: No such file or directory` appear, see the steps in <https://github.com/docker/buildx/issues/495#issuecomment-761562905>.
+
 To build the OCI images like provided in this artifact bundle, first set up cross-architecture docker buildx on your machine according to the documentation at <https://docs.docker.com/build/buildx/multiplatform-images/>.
 Then, each set of images can be built from its Bakefile like this:
 ```
