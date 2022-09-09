@@ -223,7 +223,7 @@ For local development, the containers can be built and loaded into the local Doc
 To build the OCI images like provided in this artifact bundle, first set up cross-architecture docker buildx on your machine according to the documentation at <https://docs.docker.com/build/buildx/multiplatform-images/>.
 Then, each set of images can be built from its Bakefile like this:
 ```
-docker buildx bake -f Bakefile-ARCH.hcl wasmbounds-runners
+docker buildx bake -f Bakefile-ARCH.hcl
 ```
 
 ## Compiling the runners

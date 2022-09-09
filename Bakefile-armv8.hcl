@@ -1,6 +1,6 @@
 
 group "default" {
-    targets = ["wasmbounds-runtime-base"]
+    targets = ["wasmbounds-runtime-base", "wasmbounds-toolchain-base", "wasmbounds-runners"]
 }
 
 target "wasmbounds-runtime-base" {
