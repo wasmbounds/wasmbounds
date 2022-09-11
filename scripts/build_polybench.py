@@ -48,6 +48,8 @@ def main():
         # cflags += ['-nodefaultlibs', '-Wl,-lc']
         if Path('/opt/wasi-sdk/share/wasi-sysroot').is_dir():
             cflags.append('--sysroot=/opt/wasi-sdk/share/wasi-sysroot')
+            if cc == 'clang':
+                cc = '/opt/wasi-sdk/bin/clang'
 
     utilfile = str(POLYBENCH_DIR / 'utilities' / 'polybench.c')
     march = 'native'
@@ -66,8 +68,7 @@ def main():
         dstfile = out_dir / (srcfstem + dest_ext)
         print(
             f"Compiling {nth+1:2}/{len(all_benchmarks)} {srcfstem} with {cc} to {dstfile}")
-        if not dry_run:
-            subprocess.run([cc, '-o', dstfile, srcfile, utilfile,
+        ccargs = [cc, '-o', dstfile, srcfile, utilfile,
                             '-std=c11', '-lm', '-O3', f'-march={march}',
                             '-D_POSIX_C_SOURCE=200809L',
                             '-DPOLYBENCH_NO_FLUSH_CACHE=1',
@@ -75,7 +76,12 @@ def main():
                             '-DPOLYBENCH_USE_C99_PROTO=1',
                             '-DMEDIUM_DATASET=1',
                             '-I' + str(POLYBENCH_DIR / 'utilities')
-                            ] + cflags)
+                            ] + cflags
+        if not dry_run:
+            subprocess.run(ccargs)
+        else:
+            import shlex
+            print(' '.join([shlex.quote(str(arg)) for arg in ccargs]))
 
     pass
 

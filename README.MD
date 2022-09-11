@@ -103,9 +103,13 @@ This compiles and runs the daemon, listening on port 8125, monitoring the CPU an
 
 To load the OCI images into the local Docker installation for a specific architecture use the following commands:
 ```bash
+# Load's last line of output has the sha256 of the imported image, tags have to be recreated manually
 docker load -i wasmbounds-runtime-base.ARCHITECTURE.tar
+docker tag sha256:xxxxxxx wasmbounds-runtime-base
 docker load -i wasmbounds-toolchain-base.ARCHITECTURE.tar
+docker tag sha256:xxxxxxx wasmbounds-toolchain-base
 docker load -i wasmbounds-runners.ARCHITECTURE.tar
+docker tag sha256:xxxxxxx wasmbounds-runners
 ```
 
 ## Building the benchmark binaries using the Docker container
@@ -149,7 +153,7 @@ Take note of the date and time the suite was run, and make sure to keep the corr
 ### Preparing the csv file for R plotting code
 To convert the full logfile into the abbreviated csv file used for plotting, use the following command:
 ```
-./scripts/log2csv.py benchrunner-HOST-regular-DATE-TIME.log ./runs/myrun.csv
+./scripts/log2csv.py ./runs/benchrunner-HOST-regular-DATE-TIME.log ./runs/myrun.csv
 ```
 The short `knitall.R` script contains an array of machines plots are made for, add `myrun` to it to generate plots from your experiment run(s).
 
