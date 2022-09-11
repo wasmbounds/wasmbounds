@@ -5,10 +5,8 @@
 CMakeUserPresets.json
 /runs/
 /node-v*/out/
-/node-v*/config.gypi
 /node-v*/config.mk
 /node-v*/config.status
-/node-v*/icu_config.gypi
 /wasmbounds-*.tar
 /riscv-binaries
 

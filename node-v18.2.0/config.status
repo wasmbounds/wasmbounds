@@ -1,0 +1,3 @@
+#!/bin/sh
+set -x
+exec ./configure --ninja --prefix /home/kubasz/phd/wasmbounds/runner-build/default/nodejs --without-dtrace --without-etw --without-npm --without-corepack --without-ssl --shared --with-intl none
