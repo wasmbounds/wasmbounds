@@ -88,8 +88,12 @@ paper_pointsize <- 10
 paper_theme <- theme_light() +
   theme(
     plot.title=element_blank(),
-    legend.margin=margin(0,0,0,0,"cm"),
-    axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5),
+    legend.margin=margin(0,0,0,0,"pt"),
+    plot.margin=margin(1,1,1,1,"pt"),
+    axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, margin = margin(0,0,0,0,"pt")),
+    axis.text.y = element_text(margin = margin(0,0,0,0,"pt")),
+    axis.title.x = element_text(margin = margin(0,0,0,0,"pt")),
+    axis.title.y = element_text(margin = margin(0,0,0,0,"pt")),
     strip.background = element_rect(fill = "#eeeeee", colour = "#aaaaaa"),
     strip.text = element_text(colour = "#000000")
   )
